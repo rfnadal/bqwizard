@@ -12,6 +12,8 @@ def get_dataset_info(dataset_id: str):
   dataset = client.get_dataset(dataset_id)
   full_dataset_id = f"{dataset.project}.{dataset.dataset_id}"
   print(f"[green]Dataset Info:[/green]")
+  print(f"Dataset Name: {full_dataset_id}")
   print(f"Description: {dataset.description}")
   print(f"Dataset Location: {dataset.location}")
   print(f"Tables within the dataset: {[table.table_id for table in client.list_tables(dataset)]}")
+
