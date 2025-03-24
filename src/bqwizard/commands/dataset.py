@@ -44,5 +44,15 @@ def ls(ctx) -> str:
         print(f"{project} does not contain any datasets.")
 
 
+@dataset.command()
+@click.pass_context
+def describe_all(ctx):
+  client = ctx.obj["CLIENT"]
+  datasets = datasets = list(client.list_datasets())
+  for dataset in datasets:
+    click.echo(f"\nDataset: {dataset.dataset_id}")
+    table_data = [(t.table_id, t.dataset_id, t.table_type) for t in client.list_tables(dataset)]
+    click.echo(f"\nTables:")
+    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type"], tablefmt="grid"))
 
 
