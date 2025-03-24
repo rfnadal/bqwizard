@@ -47,6 +47,7 @@ def ls(ctx) -> str:
 @dataset.command()
 @click.pass_context
 def describe_all(ctx):
+  """List all datasets and it's corresponding tables."""
   client = ctx.obj["CLIENT"]
   datasets = datasets = list(client.list_datasets())
   for dataset in datasets:
@@ -55,4 +56,47 @@ def describe_all(ctx):
     click.echo(f"\nTables:")
     click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type"], tablefmt="grid"))
 
+@dataset.command()
+@click.pass_context
+@click.argument("dataset_name")
+@click.option("--location", default="US")
+def create(ctx, dataset_name, location):
+    "Create a dataset"
+    client = ctx.obj["CLIENT"]
+    project = ctx.obj["PROJECT"]
+    if project:
+        try:
+            dataset_ref = f"{project}.{dataset_name}"
+            confirmation = click.confirm(f"Create dataset {dataset_ref} in location {location}?")
+            if confirmation:
+                click.echo(f"Creatiing dataset {dataset_ref} in location {location}")
+                dataset = client.create_dataset(dataset_ref, timeout=30)
+                click.echo(f"Successfully created dataset {dataset_ref} in location {location}")
+        except Exception as e:
+            click.echo(f"Unknow Exception Occured: {e}")
+    else:
+        click.echo("Please either pass a project id or set the GOOGLE_CLOUD_PROJECT environment variable.")
+
+
+@dataset.command()
+@click.pass_context
+@click.argument("dataset_name")
+def delete(ctx, dataset_name):
+    "Delete a dataset"
+    client = ctx.obj["CLIENT"]
+    project = ctx.obj['PROJECT']
+    try:
+        if project:
+            dataset_ref = f"{project}.{dataset_name}"
+            confirmation_1 = click.confirm(f"Delete dataset {dataset_ref}?")
+            confirmation_2 = click.confirm(f"This is a distructive action are you sure?")
+            if confirmation_1 and confirmation_2:
+                client.delete_dataset(dataset_ref, delete_contents=True, not_found_ok=True)
+                click.echo(f"Successfully deleted the {dataset_ref} dataset.ß")
+            else:
+                click.echo("Deletion aborted")
+        else:
+            click.echo("Please either pass a project id or set the GOOGLE_CLOUD_PROJECT environment variable.")
+    except Exception as e:
+        click.echo(f"Unknown error occured. {e}")
 
