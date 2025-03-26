@@ -1,8 +1,9 @@
 import click 
 from google.cloud import bigquery
+from .utils.dataset_utils import check_dataset_existance, create_view, create_dataset
 from tabulate import tabulate
-from typing import AnyStr
 import os
+
 
 @click.group()
 @click.option("--project", envvar='GOOGLE_CLOUD_PROJECT')
@@ -60,7 +61,7 @@ def describe_all(ctx):
 @click.pass_context
 @click.argument("dataset_name")
 @click.option("--location", default="US")
-def create(ctx, dataset_name, location):
+def create(ctx, dataset_name: str, location: str):
     "Create a dataset"
     client = ctx.obj["CLIENT"]
     project = ctx.obj["PROJECT"]
@@ -81,7 +82,7 @@ def create(ctx, dataset_name, location):
 @dataset.command()
 @click.pass_context
 @click.argument("dataset_name")
-def delete(ctx, dataset_name):
+def delete(ctx, dataset_name: str):
     "Delete a dataset"
     client = ctx.obj["CLIENT"]
     project = ctx.obj['PROJECT']
@@ -100,3 +101,33 @@ def delete(ctx, dataset_name):
     except Exception as e:
         click.echo(f"Unknown error occured. {e}")
 
+@dataset.command()
+@click.argument("source_project")
+@click.argument("source_dataset")
+@click.argument("target_project")
+@click.argument("target_dataset")
+@click.option("--force", help="Automatically create target datasets if they don't exist.", is_flag=True)
+@click.pass_context
+def expose(ctx, source_project: str, source_dataset: str, target_project: str, target_dataset: str, force: bool):
+    "Expose all the tables or views in a datset as views in another dataset."
+    try:
+        client = ctx.obj['CLIENT']
+        source_dataset_ref = f"{source_project}.{source_dataset}"
+        target_dataset_ref = f"{target_project}.{target_dataset}"
+        click.echo(f"{force}")
+        click.echo(f"Exposing dataset {source_dataset_ref} to {target_dataset_ref}")
+        if check_dataset_existance(source_dataset_ref) and check_dataset_existance(target_dataset_ref):
+            for tables in client.list_tables(source_dataset_ref):
+                click.echo(f"{source_project}.{tables.table_id}")
+                create_view(source_dataset_ref, target_dataset_ref, tables.table_id)
+        elif check_dataset_existance(target_dataset_ref) == False and force:
+            click.echo(f"Creating missing dataset {target_dataset_ref}.")
+            create_dataset(target_dataset_ref)
+            for tables in client.list_tables(source_dataset_ref):
+                click.echo(f"{source_project}.{tables.table_id}")
+                create_view(source_dataset_ref, target_dataset_ref, tables.table_id)
+        else:
+            click.echo("Error: Please make sure that source and target datasets exists.")
+        click.echo("Done.")
+    except Exception as e:
+        click.echo(f"Unknown Exception Occured: {e}")
