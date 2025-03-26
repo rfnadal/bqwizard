@@ -1,6 +1,6 @@
 # BQWizard
 
-A powerful and efficient CLI tool for interacting with Google BigQuery, designed for those who need quick and easy access to their BigQuery resources.
+The duct tape and WD-40 every data engineer needs in their Big Query toolbox.
 
 ## Features
 
