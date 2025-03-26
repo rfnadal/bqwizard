@@ -5,6 +5,7 @@ from tabulate import tabulate
 import os
 
 
+
 @click.group()
 @click.option("--project", envvar='GOOGLE_CLOUD_PROJECT')
 @click.pass_context
@@ -14,7 +15,6 @@ def dataset(ctx, project: str):
     ctx.obj['PROJECT'] = project
     client = bigquery.Client(project)
     ctx.obj['CLIENT'] = client
-
 @dataset.command()
 @click.argument("dataset_name")
 @click.pass_context
@@ -99,7 +99,7 @@ def delete(ctx, dataset_name: str):
         else:
             click.echo("Please either pass a project id or set the GOOGLE_CLOUD_PROJECT environment variable.")
     except Exception as e:
-        click.echo(f"Unknown error occured. {e}")
+        click.echo(f"Unknown error occured: {e}")
 
 @dataset.command()
 @click.argument("source_project")
@@ -128,3 +128,5 @@ def expose(ctx, source_project: str, source_dataset: str, target_project: str, t
         click.echo("Done.")
     except Exception as e:
         click.echo(f"Unknown Exception Occured: {e}")
+
+
