@@ -114,17 +114,14 @@ def expose(ctx, source_project: str, source_dataset: str, target_project: str, t
         client = ctx.obj['CLIENT']
         source_dataset_ref = f"{source_project}.{source_dataset}"
         target_dataset_ref = f"{target_project}.{target_dataset}"
-        click.echo(f"{force}")
         click.echo(f"Exposing dataset {source_dataset_ref} to {target_dataset_ref}")
         if check_dataset_existance(source_dataset_ref) and check_dataset_existance(target_dataset_ref):
             for tables in client.list_tables(source_dataset_ref):
-                click.echo(f"{source_project}.{tables.table_id}")
                 create_view(source_dataset_ref, target_dataset_ref, tables.table_id)
         elif check_dataset_existance(target_dataset_ref) == False and force:
             click.echo(f"Creating missing dataset {target_dataset_ref}.")
             create_dataset(target_dataset_ref)
             for tables in client.list_tables(source_dataset_ref):
-                click.echo(f"{source_project}.{tables.table_id}")
                 create_view(source_dataset_ref, target_dataset_ref, tables.table_id)
         else:
             click.echo("Error: Please make sure that source and target datasets exists.")
