@@ -4,6 +4,7 @@ from .utils.dataset_utils import check_dataset_existance, create_view, create_da
 from tabulate import tabulate
 import os
 from typing import Tuple
+from google.api_core.exceptions import NotFound
 
 @click.group()
 @click.option("--project", envvar='GOOGLE_CLOUD_PROJECT')
@@ -14,6 +15,8 @@ def dataset(ctx, project: str):
     ctx.obj['PROJECT'] = project
     client = bigquery.Client(project)
     ctx.obj['CLIENT'] = client
+
+
 @dataset.command()
 @click.argument("dataset_name")
 @click.pass_context
@@ -33,15 +36,18 @@ def tables(ctx, dataset_name: str) -> str:
 @click.pass_context
 def ls(ctx) -> str:
     """List datasets in a project"""
-    project = ctx.obj['PROJECT']
-    client = ctx.obj['CLIENT']
-    datasets = list(client.list_datasets())
-    if datasets:
-        click.echo(f"Listing datasets in project {project}.")
-        dataset_data = [[d.dataset_id] for d in datasets]
-        click.echo(tabulate(dataset_data, headers=["Dataset ID"], tablefmt="grid"))
-    else:
-        print(f"{project} does not contain any datasets.")
+    try:
+        project = ctx.obj['PROJECT']
+        client = ctx.obj['CLIENT']
+        datasets = list(client.list_datasets())
+        if datasets:
+            click.echo(f"Listing datasets in project {project}.")
+            dataset_data = [[d.dataset_id] for d in datasets]
+            click.echo(tabulate(dataset_data, headers=["Dataset ID"], tablefmt="grid"))
+        else:
+            print(f"{project} does not contain any datasets.")
+    except NotFound:
+        click.echo(f"Project {project} not found.")
 
 
 @dataset.command()
@@ -150,6 +156,7 @@ def chain(ctx, datasets: tuple, force: bool):
     click.echo("Chain completed.")
 
     
+# TODO: Add a describe feature to describe a single dataaset IE: bqwizard dataaset describe dataset_name.
 
 
 
