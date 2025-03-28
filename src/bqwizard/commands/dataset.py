@@ -1,10 +1,9 @@
 import click 
 from google.cloud import bigquery
-from .utils.dataset_utils import check_dataset_existance, create_view, create_dataset
+from .utils.dataset_utils import check_dataset_existance, create_view, create_dataset, create_dataset_chain, create_dataset_chain_views
 from tabulate import tabulate
 import os
-
-
+from typing import Tuple
 
 @click.group()
 @click.option("--project", envvar='GOOGLE_CLOUD_PROJECT')
@@ -50,12 +49,13 @@ def ls(ctx) -> str:
 def describe_all(ctx):
   """List all datasets and it's corresponding tables."""
   client = ctx.obj["CLIENT"]
+  project = ctx.obj["PROJECT"]
   datasets = datasets = list(client.list_datasets())
   for dataset in datasets:
     click.echo(f"\nDataset: {dataset.dataset_id}")
-    table_data = [(t.table_id, t.dataset_id, t.table_type) for t in client.list_tables(dataset)]
+    table_data = [(t.table_id, t.dataset_id, t.table_type, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").num_rows, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").modified) for t in client.list_tables(dataset)]
     click.echo(f"\nTables:")
-    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type"], tablefmt="grid"))
+    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type", "Row Count","Last Updated (UTC)"], tablefmt="grid"))
 
 @dataset.command()
 @click.pass_context
@@ -87,13 +87,16 @@ def delete(ctx, dataset_name: str):
     client = ctx.obj["CLIENT"]
     project = ctx.obj['PROJECT']
     try:
+        if len(dataset_name.split('.')[0]) > 0:
+            project = dataset_name.split('.')[0]
+            dataset_name = dataset_name.split('.')[1]
         if project:
             dataset_ref = f"{project}.{dataset_name}"
             confirmation_1 = click.confirm(f"Delete dataset {dataset_ref}?")
             confirmation_2 = click.confirm(f"This is a distructive action are you sure?")
             if confirmation_1 and confirmation_2:
                 client.delete_dataset(dataset_ref, delete_contents=True, not_found_ok=True)
-                click.echo(f"Successfully deleted the {dataset_ref} dataset.ß")
+                click.echo(f"Successfully deleted the {dataset_ref} dataset.")
             else:
                 click.echo("Deletion aborted")
         else:
@@ -129,4 +132,26 @@ def expose(ctx, source_project: str, source_dataset: str, target_project: str, t
     except Exception as e:
         click.echo(f"Unknown Exception Occured: {e}")
 
+@dataset.command
+@click.argument("datasets", nargs=-1, type=str)
+@click.option("--force", help="Automatically create target datasets if they don't exist.", is_flag=True)
+@click.pass_context
+def chain(ctx, datasets: tuple, force: bool):
+    """Create's a chain of datasets to expose data accross multiple datasets."""
+    client = ctx.obj['CLIENT']
+    datasets_exist = all([check_dataset_existance(dataset) for dataset in datasets]) 
+    if datasets_exist:
+       create_dataset_chain_views(client, datasets)
+    elif not datasets_exist and force:
+        create_dataset_chain(datasets)
+        create_dataset_chain_views(client, datasets)    
+    else:
+        click.echo("Not all target dataset's exist. Either create them or use --force.")
+    click.echo("Chain completed.")
 
+    
+
+
+
+        
+    
