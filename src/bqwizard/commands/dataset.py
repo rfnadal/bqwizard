@@ -1,6 +1,6 @@
 import click 
 from google.cloud import bigquery
-from .utils.dataset_utils import check_dataset_existance, create_view, create_dataset, create_dataset_chain, create_dataset_chain_views
+from .utils.dataset_utils import check_dataset_existance, create_view, create_dataset, create_dataset_chain, create_dataset_chain_views, describe_dataset
 from tabulate import tabulate
 import os
 from typing import Tuple
@@ -12,7 +12,6 @@ from google.api_core.exceptions import NotFound
 def dataset(ctx):
     """Manage Big Query Datasets"""
     ctx.ensure_object(dict)
-
 
 @dataset.command()
 @click.argument("dataset_name")
@@ -53,12 +52,11 @@ def describe_all(ctx):
   """List all datasets and it's corresponding tables."""
   client = ctx.obj["CLIENT"]
   project = ctx.obj["PROJECT"]
-  datasets = datasets = list(client.list_datasets())
-  for dataset in datasets:
-    click.echo(f"\nDataset: {dataset.dataset_id}")
-    table_data = [(t.table_id, t.dataset_id, t.table_type, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").num_rows, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").modified) for t in client.list_tables(dataset)]
-    click.echo(f"\nTables:")
-    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type", "Row Count","Last Updated (UTC)"], tablefmt="grid"))
+  datasets = list(client.list_datasets())
+  for dataset_item in datasets:
+    # Get full dataset information
+    dataset = client.get_dataset(dataset_item.reference)
+    describe_dataset(client, dataset, project)
 
 @dataset.command()
 @click.pass_context
@@ -152,8 +150,6 @@ def chain(ctx, datasets: tuple, force: bool):
         click.echo("Not all target dataset's exist. Either create them or use --force.")
     click.echo("Chain completed.")
 
-    
-# TODO: Add a describe feature to describe a single dataaset IE: bqwizard dataaset describe dataset_name.
 
 @dataset.command
 @click.argument("dataset")
@@ -163,19 +159,7 @@ def describe(ctx, dataset):
     client = ctx.obj["CLIENT"]
     project = ctx.obj["PROJECT"]
     dataset = client.get_dataset(dataset)
-    click.echo(f"Dataset: {dataset.dataset_id}")
-    click.echo(f"Description: {dataset.description}")
-    click.echo(f"Location: {dataset.location}")
-    click.echo("Labels:")
-    labels = dataset.labels
-    if labels:
-        for label, value in labels.items():
-            click.echo(f"\t{label}: {value}")
-    else:
-        click.echo("\tDataset has no labels defined.")
-    click.echo("Tables:")
-    table_data = [(t.table_id, t.dataset_id, t.table_type, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").num_rows, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").modified) for t in client.list_tables(dataset)]
-    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type", "Row Count","Last Updated (UTC)"], tablefmt="grid"))
+    describe_dataset(client, dataset, project)
     
         
     

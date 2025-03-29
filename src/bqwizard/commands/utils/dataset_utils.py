@@ -1,6 +1,7 @@
 from google.cloud import bigquery
 from google.api_core.exceptions import NotFound
 import click 
+from tabulate import tabulate
 
 def check_dataset_existance(client, dataset: str):
     try: 
@@ -38,3 +39,19 @@ def create_dataset_chain_views(client, datasets):
                 if index < (len(datasets) - 1):
                     click.echo(f"{dataset}.{table} --> {datasets[index + 1]}.{table}")
                     create_view(client, dataset, datasets[index + 1], table)
+
+def describe_dataset(client, dataset, project):
+    """Describe a dataset and its tables."""
+    click.echo(f"Dataset: {dataset.dataset_id}")
+    click.echo(f"Description: {dataset.description}")
+    click.echo(f"Location: {dataset.location}")
+    click.echo("Labels:")
+    labels = dataset.labels
+    if labels:
+        for label, value in labels.items():
+            click.echo(f"\t{label}: {value}")
+    else:
+        click.echo("\tDataset has no labels defined.")
+    click.echo("\nTables:")
+    table_data = [(t.table_id, t.dataset_id, t.table_type, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").num_rows, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").modified) for t in client.list_tables(dataset)]
+    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type", "Row Count","Last Updated (UTC)"], tablefmt="grid"))
