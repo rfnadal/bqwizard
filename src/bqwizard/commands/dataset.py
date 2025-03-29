@@ -6,15 +6,12 @@ import os
 from typing import Tuple
 from google.api_core.exceptions import NotFound
 
+
 @click.group()
-@click.option("--project", envvar='GOOGLE_CLOUD_PROJECT')
 @click.pass_context
-def dataset(ctx, project: str):
+def dataset(ctx):
     """Manage Big Query Datasets"""
     ctx.ensure_object(dict)
-    ctx.obj['PROJECT'] = project
-    client = bigquery.Client(project)
-    ctx.obj['CLIENT'] = client
 
 
 @dataset.command()
@@ -77,7 +74,7 @@ def create(ctx, dataset_name: str, location: str):
             confirmation = click.confirm(f"Create dataset {dataset_ref} in location {location}?")
             if confirmation:
                 click.echo(f"Creatiing dataset {dataset_ref} in location {location}")
-                dataset = client.create_dataset(dataset_ref, timeout=30)
+                dataset = client.create_dataset(client, dataset_ref, timeout=30)
                 click.echo(f"Successfully created dataset {dataset_ref} in location {location}")
         except Exception as e:
             click.echo(f"Unknow Exception Occured: {e}")
@@ -124,14 +121,14 @@ def expose(ctx, source_project: str, source_dataset: str, target_project: str, t
         source_dataset_ref = f"{source_project}.{source_dataset}"
         target_dataset_ref = f"{target_project}.{target_dataset}"
         click.echo(f"Exposing dataset {source_dataset_ref} to {target_dataset_ref}")
-        if check_dataset_existance(source_dataset_ref) and check_dataset_existance(target_dataset_ref):
+        if check_dataset_existance(client, source_dataset_ref) and check_dataset_existance(client, target_dataset_ref):
             for tables in client.list_tables(source_dataset_ref):
-                create_view(source_dataset_ref, target_dataset_ref, tables.table_id)
-        elif check_dataset_existance(target_dataset_ref) == False and force:
+                create_view(client, source_dataset_ref, target_dataset_ref, tables.table_id)
+        elif check_dataset_existance(client, target_dataset_ref) == False and force:
             click.echo(f"Creating missing dataset {target_dataset_ref}.")
-            create_dataset(target_dataset_ref)
+            create_dataset(client, target_dataset_ref)
             for tables in client.list_tables(source_dataset_ref):
-                create_view(source_dataset_ref, target_dataset_ref, tables.table_id)
+                create_view(client, source_dataset_ref, target_dataset_ref, tables.table_id)
         else:
             click.echo("Error: Please make sure that source and target datasets exists.")
         click.echo("Done.")
@@ -145,11 +142,11 @@ def expose(ctx, source_project: str, source_dataset: str, target_project: str, t
 def chain(ctx, datasets: tuple, force: bool):
     """Create's a chain of datasets to expose data accross multiple datasets."""
     client = ctx.obj['CLIENT']
-    datasets_exist = all([check_dataset_existance(dataset) for dataset in datasets]) 
+    datasets_exist = all([check_dataset_existance(client, dataset) for dataset in datasets]) 
     if datasets_exist:
        create_dataset_chain_views(client, datasets)
     elif not datasets_exist and force:
-        create_dataset_chain(datasets)
+        create_dataset_chain(client, datasets)
         create_dataset_chain_views(client, datasets)    
     else:
         click.echo("Not all target dataset's exist. Either create them or use --force.")
@@ -158,7 +155,27 @@ def chain(ctx, datasets: tuple, force: bool):
     
 # TODO: Add a describe feature to describe a single dataaset IE: bqwizard dataaset describe dataset_name.
 
-
-
+@dataset.command
+@click.argument("dataset")
+@click.pass_context
+def describe(ctx, dataset):
+    """Describes the dataset and it's tables."""
+    client = ctx.obj["CLIENT"]
+    project = ctx.obj["PROJECT"]
+    dataset = client.get_dataset(dataset)
+    click.echo(f"Dataset: {dataset.dataset_id}")
+    click.echo(f"Description: {dataset.description}")
+    click.echo(f"Location: {dataset.location}")
+    click.echo("Labels:")
+    labels = dataset.labels
+    if labels:
+        for label, value in labels.items():
+            click.echo(f"\t{label}: {value}")
+    else:
+        click.echo("\tDataset has no labels defined.")
+    click.echo("Tables:")
+    table_data = [(t.table_id, t.dataset_id, t.table_type, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").num_rows, client.get_table(f"{project}.{t.dataset_id}.{t.table_id}").modified) for t in client.list_tables(dataset)]
+    click.echo(tabulate(table_data, headers=["Table ID", "Dataset", "Type", "Row Count","Last Updated (UTC)"], tablefmt="grid"))
+    
         
     
