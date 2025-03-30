@@ -87,7 +87,6 @@ def describe_all(ctx: Context) -> None:
     project = ctx.obj["PROJECT"]
     datasets = list(client.list_datasets())
     for dataset_item in datasets:
-        # Get full dataset information
         dataset = client.get_dataset(dataset_item.reference)
         describe_dataset(client, dataset, project)
 
@@ -150,6 +149,9 @@ def delete(ctx: Context, dataset_name: str) -> None:
         if len(dataset_name.split('.')[0]) > 0:
             project = dataset_name.split('.')[0]
             dataset_name = dataset_name.split('.')[1]
+        elif len(dataset_name.split('.')[0]) == 0 and project is None:
+            click.echo("Please either pass a fully qualified dataset name or set the GOOGLE_CLOUD_PROJECT environment variable.")
+            return None
         if project:
             dataset_ref = f"{project}.{dataset_name}"
             confirmation_1 = click.confirm(f"Delete dataset {dataset_ref}?")
