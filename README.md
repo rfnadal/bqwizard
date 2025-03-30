@@ -46,6 +46,17 @@ bqwizard --help
 
 # Dataset commands
 bqwizard dataset --help
+# List all datasets in the current project
+bqwizard dataset ls
+# List all tables in a dataset
+bqwizard dataset tables my_dataset
+# Create a chain of datasets with views
+bqwizard dataset chain dataset1 dataset2 dataset3
+# Create a chain and auto-create missing datasets
+bqwizard dataset chain dataset1 dataset2 dataset3 --force
+# Show detailed information about a dataset
+bqwizard dataset describe my_dataset
+
 ```
 
 ## Contributing
