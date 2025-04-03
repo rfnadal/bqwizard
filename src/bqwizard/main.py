@@ -7,7 +7,11 @@ from .commands.utils import get_project_from_config
 
 @click.group()
 @click.pass_context
-@click.option("--project", envvar="GOOGLE_CLOUD_PROJECT")
+@click.option(
+    "--project",
+    help="The GCP project ID to use for the current session.",
+    envvar="GOOGLE_CLOUD_PROJECT",
+)
 def cli(ctx, project):
     """A Big Query CLI Tool for those in a hurry."""
     ctx.ensure_object(dict)

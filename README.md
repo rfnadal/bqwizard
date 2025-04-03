@@ -57,6 +57,12 @@ bqwizard dataset chain dataset1 dataset2 dataset3 --force
 # Show detailed information about a dataset
 bqwizard dataset describe my_dataset
 
+# Configuration commands
+bqwizard config --help
+# Set the GCP project for the current session
+bqwizard config set-project my-project-id
+# Display current configuration settings
+bqwizard config show
 ```
 
 ## Contributing

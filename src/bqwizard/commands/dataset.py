@@ -20,7 +20,7 @@ def dataset(ctx: Context):
     Args:
         ctx: Click context object for managing shared state between commands
     """
-    ctx.ensure_object(dict)
+    pass
 
 
 @dataset.command()
