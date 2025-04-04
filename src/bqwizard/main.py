@@ -1,6 +1,7 @@
 import click
 from .commands import dataset
 from .commands import config
+from .commands import table
 from google.cloud import bigquery
 from .commands.utils import get_project_from_config
 
@@ -31,6 +32,7 @@ def cli(ctx, project):
 
 cli.add_command(dataset.dataset)
 cli.add_command(config.config)
+cli.add_command(table.table)
 
 if __name__ == "__main__":
     cli()

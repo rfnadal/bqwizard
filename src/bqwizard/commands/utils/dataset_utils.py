@@ -117,7 +117,7 @@ def describe_dataset(client, dataset, project):
             - Description
             - Location
             - Labels
-            - Table listing with details (ID, type, row count, last updated)
+            - Table listing with details (ID, type, row count, last modified)
     """
     click.echo(f"Dataset: {dataset.dataset_id}")
     click.echo(f"Description: {dataset.description}")
@@ -143,7 +143,7 @@ def describe_dataset(client, dataset, project):
     click.echo(
         tabulate(
             table_data,
-            headers=["Table ID", "Dataset", "Type", "Row Count", "Last Updated (UTC)"],
+            headers=["Table ID", "Dataset", "Type", "Row Count", "Last Modified (UTC)"],
             tablefmt="grid",
         )
     )
