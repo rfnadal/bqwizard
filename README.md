@@ -57,6 +57,21 @@ bqwizard dataset chain dataset1 dataset2 dataset3 --force
 # Show detailed information about a dataset
 bqwizard dataset describe my_dataset
 
+# Table commands
+bqwizard table --help
+# Show detailed information about a table
+bqwizard table describe my_dataset.my_table
+# Delete a table (requires confirmation)
+bqwizard table delete my_dataset.my_table
+# Refresh a view to update its schema
+bqwizard table refresh_view my_dataset.my_view
+# Display the first few rows of a table
+bqwizard table head my_dataset.my_table
+# Display more rows (default is 5)
+bqwizard table head my_dataset.my_table --rows 10
+# Export a sample of the table to CSV
+bqwizard table sample my_dataset.my_table --percent 5 --filename sample.csv
+
 # Configuration commands
 bqwizard config --help
 # Set the GCP project for the current session
