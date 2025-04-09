@@ -16,6 +16,8 @@ def check_dataset_existence(client, dataset: str):
         parts = dataset.split(".")
         if len(parts) == 2:
             project_id, dataset_id = parts
+        elif len(parts) == 3:
+            project_id, dataset_id, table_id = parts
         else:
             dataset_id = dataset
             project_id = client.project

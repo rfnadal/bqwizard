@@ -1,7 +1,7 @@
 import click
 from click import Context
 from tabulate import tabulate
-from .utils.table_utils import validate_table_id, write_to_csv
+from .utils.table_utils import validate_table_id, write_to_csv, create_view
 from google.api_core.exceptions import NotFound
 
 
@@ -159,7 +159,6 @@ def head(ctx: Context, table: str, rows: int):
         query_job = client.query(query)
         results = query_job.result()
 
-        # Convert results to list of lists for tabulate
         rows_data = [list(row.values()) for row in results]
 
         click.echo(f"\nFirst {rows} rows of table: {table_id}\n")
@@ -220,10 +219,16 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
     click.echo(f"Sample of {table} file exported to {dest}")
 
 
+@table.command()
 @click.argument("source_table")
 @click.argument("target_table")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Automatically create target dataset if it does not exist.",
+)
 @click.pass_context
-def expose(ctx: Context, source_table: str, target_table: str) -> None:
+def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> None:
     """
     Creates a view of a table
 
@@ -235,6 +240,8 @@ def expose(ctx: Context, source_table: str, target_table: str) -> None:
     Returns:
         None
     """
+    client = ctx.obj["CLIENT"]
+    create_view(client, source_table, target_table, force)
 
 
-# TODO
+# TODO:

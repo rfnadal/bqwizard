@@ -165,11 +165,12 @@ def delete(ctx: Context, dataset_name: str) -> None:
     """
     client = ctx.obj["CLIENT"]
     project = ctx.obj["PROJECT"]
+    print("Project:", project)
     try:
-        if len(dataset_name.split(".")[0]) > 0:
+        if len(dataset_name.split(".")[0]) > 0 and len(dataset_name.split(".")[0]) <= 3:
             project = dataset_name.split(".")[0]
             dataset_name = dataset_name.split(".")[1]
-        elif len(dataset_name.split(".")[0]) == 0 and project is None:
+        elif project is None and "." not in dataset_name:
             click.echo(
                 "Please either pass a fully qualified dataset name or set the GOOGLE_CLOUD_PROJECT environment variable."
             )
