@@ -56,6 +56,8 @@ bqwizard dataset chain dataset1 dataset2 dataset3
 bqwizard dataset chain dataset1 dataset2 dataset3 --force
 # Create a chain including only tables from a CSV file
 bqwizard dataset chain dataset1 dataset2 dataset3 --tables-csv tables.csv
+# Create a chain including only specific tables
+bqwizard dataset chain dataset1 dataset2 dataset3 --tables "table1,table2,table3"
 # Show detailed information about a dataset
 bqwizard dataset describe my_dataset
 
@@ -82,9 +84,11 @@ bqwizard config set-project my-project-id
 bqwizard config show
 ```
 
-## CSV Table Filtering for Dataset Chain
+## Table Filtering for Dataset Chain
 
-When creating a dataset chain, you can selectively include only specific tables by providing a CSV file:
+When creating a dataset chain, you can selectively include only specific tables using two methods:
+
+### Using a CSV File
 
 1. Create a single-column CSV file containing the table names to include:
 ```
@@ -98,7 +102,19 @@ table3
 bqwizard dataset chain dataset1 dataset2 dataset3 --tables-csv path/to/tables.csv
 ```
 
-Only tables listed in the CSV file will be included in the chain, and others will be skipped.
+### Using a Comma-Separated List
+
+Simply provide the table names as a comma-separated list:
+```bash
+bqwizard dataset chain dataset1 dataset2 dataset3 --tables "table1,table2,table3"
+```
+
+You can even combine both methods, and tables from both sources will be included:
+```bash
+bqwizard dataset chain dataset1 dataset2 dataset3 --tables-csv path/to/tables.csv --tables "table4,table5"
+```
+
+Only tables specified will be included in the chain, and others will be skipped.
 
 ## Contributing
 
