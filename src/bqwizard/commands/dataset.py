@@ -7,6 +7,7 @@ from .utils.dataset_utils import (
     create_dataset_chain,
     create_dataset_chain_views,
     describe_dataset,
+    get_dataset_id,
 )
 from tabulate import tabulate
 from google.api_core.exceptions import NotFound
@@ -31,7 +32,8 @@ def tables(ctx: Context, dataset_name: str) -> None:
 
     Args:
         ctx: Click context object containing project and client information
-        dataset_name (str): Name of the dataset to list tables from
+        dataset_name (str): Name of the dataset to list tables from.
+                           Can be specified as 'dataset' or 'project.dataset'
 
     Returns:
         str: Prints formatted table showing Table ID, Dataset, and Type information
@@ -40,8 +42,10 @@ def tables(ctx: Context, dataset_name: str) -> None:
         Exception: If there's an error accessing the dataset or listing tables
     """
     try:
-        project = ctx.obj["PROJECT"]
         client = ctx.obj["CLIENT"]
+        dataset_id = get_dataset_id(client, dataset_name)
+        project, dataset_name = dataset_id.split(".")
+        
         click.echo(f"Listing tables in dataset {dataset_name} of project {project}")
         dataset_ref = client.dataset(dataset_name, project=project)
         table_data = [
@@ -113,7 +117,7 @@ def create(ctx: Context, dataset_name: str, location: str) -> None:
 
     Args:
         ctx: Click context object containing project and client information
-        dataset_name (str): Name of the dataset to create
+        dataset_name (str): Name of the dataset to create. Can be specified as 'dataset' or 'project.dataset'
         location (str): Geographic location for the dataset (default: "US")
 
     Returns:
@@ -123,25 +127,21 @@ def create(ctx: Context, dataset_name: str, location: str) -> None:
         Exception: If dataset creation fails
     """
     client = ctx.obj["CLIENT"]
-    project = ctx.obj["PROJECT"]
-    if project:
-        try:
-            dataset_ref = f"{project}.{dataset_name}"
-            confirmation = click.confirm(
-                f"Create dataset {dataset_ref} in location {location}?"
-            )
-            if confirmation:
-                click.echo(f"Creatiing dataset {dataset_ref} in location {location}")
-                dataset = client.create_dataset(client, dataset_ref, timeout=30)
-                click.echo(
-                    f"Successfully created dataset {dataset_ref} in location {location}"
-                )
-        except Exception as e:
-            click.echo(f"Unknow Exception Occured: {e}")
-    else:
-        click.echo(
-            "Please either pass a project id or set the GOOGLE_CLOUD_PROJECT environment variable."
+    
+    try:
+        dataset_ref = get_dataset_id(client, dataset_name)
+        
+        confirmation = click.confirm(
+            f"Create dataset {dataset_ref} in location {location}?"
         )
+        if confirmation:
+            click.echo(f"Creating dataset {dataset_ref} in location {location}")
+            dataset = client.create_dataset(dataset_ref, location=location, timeout=30)
+            click.echo(
+                f"Successfully created dataset {dataset_ref} in location {location}"
+            )
+    except Exception as e:
+        click.echo(f"Unknown Exception Occurred: {e}")
 
 
 @dataset.command()
@@ -152,7 +152,7 @@ def delete(ctx: Context, dataset_name: str) -> None:
 
     Args:
         ctx: Click context object containing project and client information
-        dataset_name (str): Name of the dataset to delete. Can include project ID (project.dataset)
+        dataset_name (str): Name of the dataset to delete. Can be specified as 'dataset' or 'project.dataset'
 
     Returns:
         None: Prints success message upon deletion
@@ -164,34 +164,21 @@ def delete(ctx: Context, dataset_name: str) -> None:
         Requires double confirmation due to destructive nature of operation
     """
     client = ctx.obj["CLIENT"]
-    project = ctx.obj["PROJECT"]
-    print("Project:", project)
+    
     try:
-        if len(dataset_name.split(".")[0]) > 0 and len(dataset_name.split(".")[0]) <= 3:
-            project = dataset_name.split(".")[0]
-            dataset_name = dataset_name.split(".")[1]
-        elif project is None and "." not in dataset_name:
-            click.echo(
-                "Please either pass a fully qualified dataset name or set the GOOGLE_CLOUD_PROJECT environment variable."
+        dataset_ref = get_dataset_id(client, dataset_name)
+        
+        confirmation_1 = click.confirm(f"Delete dataset {dataset_ref}?")
+        confirmation_2 = click.confirm("This is a destructive action are you sure?")
+        if confirmation_1 and confirmation_2:
+            client.delete_dataset(
+                dataset_ref, delete_contents=True, not_found_ok=True
             )
-            return None
-        if project:
-            dataset_ref = f"{project}.{dataset_name}"
-            confirmation_1 = click.confirm(f"Delete dataset {dataset_ref}?")
-            confirmation_2 = click.confirm("This is a distructive action are you sure?")
-            if confirmation_1 and confirmation_2:
-                client.delete_dataset(
-                    dataset_ref, delete_contents=True, not_found_ok=True
-                )
-                click.echo(f"Successfully deleted the {dataset_ref} dataset.")
-            else:
-                click.echo("Deletion aborted")
+            click.echo(f"Successfully deleted the {dataset_ref} dataset.")
         else:
-            click.echo(
-                "Please either pass a project id or set the GOOGLE_CLOUD_PROJECT environment variable."
-            )
+            click.echo("Deletion aborted")
     except Exception as e:
-        click.echo(f"Unknown error occured: {e}")
+        click.echo(f"Unknown error occurred: {e}")
 
 
 @dataset.command()
@@ -234,44 +221,62 @@ def expose(
         source_dataset_ref = f"{source_project}.{source_dataset}"
         target_dataset_ref = f"{target_project}.{target_dataset}"
         click.echo(f"Exposing dataset {source_dataset_ref} to {target_dataset_ref}")
-        if check_dataset_existence(
-            client, source_dataset_ref
-        ) and check_dataset_existence(client, target_dataset_ref):
-            for tables in client.list_tables(source_dataset_ref):
-                create_view(
-                    client, source_dataset_ref, target_dataset_ref, tables.table_id
-                )
-        elif not check_dataset_existence(client, target_dataset_ref) and force:
+        
+        source_exists = check_dataset_existence(client, source_dataset_ref)
+        target_exists = check_dataset_existence(client, target_dataset_ref)
+        
+        if source_exists and target_exists:
+            source_ds_ref = client.dataset(source_dataset, project=source_project)
+            tables = list(client.list_tables(source_ds_ref))
+            
+            for table in tables:
+                source_table_id = f"{source_dataset_ref}.{table.table_id}"
+                create_view(client, source_table_id, target_dataset_ref, table.table_id)
+        elif not target_exists and force:
             click.echo(f"Creating missing dataset {target_dataset_ref}.")
             create_dataset(client, target_dataset_ref)
-            for tables in client.list_tables(source_dataset_ref):
-                create_view(
-                    client, source_dataset_ref, target_dataset_ref, tables.table_id
-                )
+            
+            if source_exists:
+                source_ds_ref = client.dataset(source_dataset, project=source_project)
+                tables = list(client.list_tables(source_ds_ref))
+                
+                for table in tables:
+                    source_table_id = f"{source_dataset_ref}.{table.table_id}"
+                    create_view(client, source_table_id, target_dataset_ref, table.table_id)
+            else:
+                click.echo(f"Source dataset {source_dataset_ref} does not exist.")
         else:
             click.echo(
-                "Error: Please make sure that source and target datasets exists."
+                "Error: Please make sure that source and target datasets exist."
             )
         click.echo("Done.")
     except Exception as e:
-        click.echo(f"Unknown Exception Occured: {e}")
+        click.echo(f"Unknown Exception Occurred: {e}")
 
 
-@dataset.command
+@dataset.command()
 @click.argument("datasets", nargs=-1, type=str)
 @click.option(
     "--force",
     help="Automatically create target datasets if they don't exist.",
     is_flag=True,
 )
+@click.option(
+    "--tables-csv",
+    help="Path to a CSV file containing a single column of table names to include in the chain.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True),
+)
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool) -> None:
+def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
         ctx: Click context object containing client information
-        datasets (tuple): Ordered sequence of dataset names to chain together
+        datasets (tuple): Ordered sequence of dataset names to chain together. 
+                           Each can be specified as 'dataset' or 'project.dataset'
         force (bool): If True, creates missing datasets automatically
+        tables_csv (str, optional): Path to a CSV file with a single column listing 
+                                   table names to include. Tables not in this list will be ignored.
 
     Returns:
         None: Prints completion message when chain is created
@@ -282,20 +287,51 @@ def chain(ctx: Context, datasets: tuple, force: bool) -> None:
         - Views in dataset3 pointing to dataset2's views
     """
     client = ctx.obj["CLIENT"]
-    datasets_exist = all(
-        [check_dataset_existence(client, dataset) for dataset in datasets]
-    )
-    if datasets_exist:
-        create_dataset_chain_views(client, datasets)
-    elif not datasets_exist and force:
-        create_dataset_chain(client, datasets)
-        create_dataset_chain_views(client, datasets)
+    
+    # Load tables from CSV if provided
+    tables_to_include = None
+    if tables_csv:
+        try:
+            import csv
+            with open(tables_csv, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                tables_to_include = set(row[0] for row in reader if row)
+            click.echo(f"Loaded {len(tables_to_include)} tables from {tables_csv}")
+        except Exception as e:
+            click.echo(f"Error reading CSV file: {e}")
+            return
+   
+    qualified_datasets = []
+    for ds in datasets:
+        qualified_ds = get_dataset_id(client, ds)
+        qualified_datasets.append(qualified_ds)
+    
+    datasets_exist = True
+    for ds in qualified_datasets:
+        if not check_dataset_existence(client, ds):
+            datasets_exist = False
+            if force:
+                try:
+                    create_dataset(client, ds)
+                    click.echo(f"Created dataset {ds}")
+                except Exception as e:
+                    click.echo(f"Failed to create dataset {ds}: {e}")
+                    return
+            else:
+                click.echo(f"Dataset {ds} does not exist. Use --force to create it.")
+                return
+    
+    if datasets_exist or force:
+        try:
+            create_dataset_chain_views(client, qualified_datasets, tables_to_include)
+            click.echo("Chain completed.")
+        except Exception as e:
+            click.echo(f"Error creating dataset chain: {e}")
     else:
-        click.echo("Not all target dataset's exist. Either create them or use --force.")
-    click.echo("Chain completed.")
+        click.echo("Not all target datasets exist. Either create them or use --force.")
 
 
-@dataset.command
+@dataset.command()
 @click.argument("dataset")
 @click.pass_context
 def describe(ctx: Context, dataset: str) -> None:
@@ -303,7 +339,7 @@ def describe(ctx: Context, dataset: str) -> None:
 
     Args:
         ctx: Click context object containing project and client information
-        dataset: Dataset reference to describe
+        dataset: Dataset reference to describe. Can be specified as 'dataset' or 'project.dataset'
 
     Returns:
         None: Prints detailed dataset information including:
@@ -315,5 +351,4 @@ def describe(ctx: Context, dataset: str) -> None:
     """
     client = ctx.obj["CLIENT"]
     project = ctx.obj["PROJECT"]
-    dataset = client.get_dataset(dataset)
     describe_dataset(client, dataset, project)
