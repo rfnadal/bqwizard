@@ -17,7 +17,7 @@ def check_dataset_existence(client, dataset: str):
         if len(parts) == 2:
             project_id, dataset_id = parts
         elif len(parts) == 3:
-            project_id, dataset_id, _ = parts  
+            project_id, dataset_id, _ = parts
         else:
             dataset_id = dataset
             project_id = client.project
@@ -37,11 +37,13 @@ def create_dataset(client, target_dataset_ref):
     Returns:
         None: Prints success message upon completion
     """
-    dataset_parts = target_dataset_ref.split('.')
+    dataset_parts = target_dataset_ref.split(".")
     if len(dataset_parts) == 1:
         target_dataset_ref = f"{client.project}.{target_dataset_ref}"
     elif len(dataset_parts) > 2:
-        raise click.BadParameter(f"Invalid target_dataset_ref format for creation: {target_dataset_ref}. Expected 'dataset' or 'project.dataset'.")
+        raise click.BadParameter(
+            f"Invalid target_dataset_ref format for creation: {target_dataset_ref}. Expected 'dataset' or 'project.dataset'."
+        )
 
     client.create_dataset(target_dataset_ref)
     click.echo(f"Successfully created dataset: {target_dataset_ref}")
@@ -74,7 +76,7 @@ def validate_table_id(table: str, type: str = "short") -> bool:
 def create_view(client, source_table, target_table, force):
     """
     Creates a view from a source table to a target table.
-    
+
     Args:
         client: BigQuery client
         source_table (str): Fully qualified source table ID
@@ -83,10 +85,10 @@ def create_view(client, source_table, target_table, force):
     """
     source_dataset_ok = check_dataset_existence(client, source_table)
     target_dataset_ok = check_dataset_existence(client, target_table)
-    
+
     project, dataset, table = target_table.split(".")
     target_dataset = f"{project}.{dataset}"
-    
+
     if source_dataset_ok and target_dataset_ok:
         view_query = f"""
             CREATE VIEW `{target_table}` AS SELECT * FROM `{source_table}`
@@ -128,19 +130,19 @@ def get_table_id(project: str, table: str) -> str:
     """
     Helper function to handle table identifiers consistently.
     Determines if the table reference is fully qualified or not and formats it appropriately.
-    
+
     Args:
         project (str): The project ID from the context
         table (str): The table reference which could be in the format:
                      - table (single name, invalid but caught by validate_table_id)
                      - dataset.table
                      - project.dataset.table (fully qualified)
-    
+
     Returns:
         str: The properly formatted table_id
     """
-    table_parts = table.split('.')
-    
+    table_parts = table.split(".")
+
     if len(table_parts) == 3:
         return table
     elif len(table_parts) == 2:

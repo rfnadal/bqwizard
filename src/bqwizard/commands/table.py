@@ -1,7 +1,12 @@
 import click
 from click import Context
 from tabulate import tabulate
-from .utils.table_utils import validate_table_id, write_to_csv, create_view, get_table_id
+from .utils.table_utils import (
+    validate_table_id,
+    write_to_csv,
+    create_view,
+    get_table_id,
+)
 from google.api_core.exceptions import NotFound
 
 
@@ -94,7 +99,7 @@ def delete(ctx: Context, table: str):
 def refresh_view(ctx: Context, table: str):
     """
     Recreates a view to refresh any columns that might have changed.
-    
+
     Args:
         ctx (Context): Click Context Object.
         table (str): Table/View we want to recreate. Can be specified as dataset.table or project.dataset.table
@@ -102,7 +107,7 @@ def refresh_view(ctx: Context, table: str):
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
     view_id = get_table_id(project, table)
-        
+
     try:
         table_ref = client.get_table(view_id)
         if table_ref.table_type == "VIEW":
@@ -242,10 +247,10 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
-    
+
     source_table_id = get_table_id(project, source_table)
     target_table_id = get_table_id(project, target_table)
-    
+
     create_view(client, source_table_id, target_table_id, force)
 
 

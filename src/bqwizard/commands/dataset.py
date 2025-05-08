@@ -45,7 +45,7 @@ def tables(ctx: Context, dataset_name: str) -> None:
         client = ctx.obj["CLIENT"]
         dataset_id = get_dataset_id(client, dataset_name)
         project, dataset_name = dataset_id.split(".")
-        
+
         click.echo(f"Listing tables in dataset {dataset_name} of project {project}")
         dataset_ref = client.dataset(dataset_name, project=project)
         table_data = [
@@ -127,10 +127,10 @@ def create(ctx: Context, dataset_name: str, location: str) -> None:
         Exception: If dataset creation fails
     """
     client = ctx.obj["CLIENT"]
-    
+
     try:
         dataset_ref = get_dataset_id(client, dataset_name)
-        
+
         confirmation = click.confirm(
             f"Create dataset {dataset_ref} in location {location}?"
         )
@@ -164,16 +164,14 @@ def delete(ctx: Context, dataset_name: str) -> None:
         Requires double confirmation due to destructive nature of operation
     """
     client = ctx.obj["CLIENT"]
-    
+
     try:
         dataset_ref = get_dataset_id(client, dataset_name)
-        
+
         confirmation_1 = click.confirm(f"Delete dataset {dataset_ref}?")
         confirmation_2 = click.confirm("This is a destructive action are you sure?")
         if confirmation_1 and confirmation_2:
-            client.delete_dataset(
-                dataset_ref, delete_contents=True, not_found_ok=True
-            )
+            client.delete_dataset(dataset_ref, delete_contents=True, not_found_ok=True)
             click.echo(f"Successfully deleted the {dataset_ref} dataset.")
         else:
             click.echo("Deletion aborted")
@@ -221,34 +219,34 @@ def expose(
         source_dataset_ref = f"{source_project}.{source_dataset}"
         target_dataset_ref = f"{target_project}.{target_dataset}"
         click.echo(f"Exposing dataset {source_dataset_ref} to {target_dataset_ref}")
-        
+
         source_exists = check_dataset_existence(client, source_dataset_ref)
         target_exists = check_dataset_existence(client, target_dataset_ref)
-        
+
         if source_exists and target_exists:
             source_ds_ref = client.dataset(source_dataset, project=source_project)
             tables = list(client.list_tables(source_ds_ref))
-            
+
             for table in tables:
                 source_table_id = f"{source_dataset_ref}.{table.table_id}"
                 create_view(client, source_table_id, target_dataset_ref, table.table_id)
         elif not target_exists and force:
             click.echo(f"Creating missing dataset {target_dataset_ref}.")
             create_dataset(client, target_dataset_ref)
-            
+
             if source_exists:
                 source_ds_ref = client.dataset(source_dataset, project=source_project)
                 tables = list(client.list_tables(source_ds_ref))
-                
+
                 for table in tables:
                     source_table_id = f"{source_dataset_ref}.{table.table_id}"
-                    create_view(client, source_table_id, target_dataset_ref, table.table_id)
+                    create_view(
+                        client, source_table_id, target_dataset_ref, table.table_id
+                    )
             else:
                 click.echo(f"Source dataset {source_dataset_ref} does not exist.")
         else:
-            click.echo(
-                "Error: Please make sure that source and target datasets exist."
-            )
+            click.echo("Error: Please make sure that source and target datasets exist.")
         click.echo("Done.")
     except Exception as e:
         click.echo(f"Unknown Exception Occurred: {e}")
@@ -272,10 +270,10 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None) ->
 
     Args:
         ctx: Click context object containing client information
-        datasets (tuple): Ordered sequence of dataset names to chain together. 
+        datasets (tuple): Ordered sequence of dataset names to chain together.
                            Each can be specified as 'dataset' or 'project.dataset'
         force (bool): If True, creates missing datasets automatically
-        tables_csv (str, optional): Path to a CSV file with a single column listing 
+        tables_csv (str, optional): Path to a CSV file with a single column listing
                                    table names to include. Tables not in this list will be ignored.
 
     Returns:
@@ -287,25 +285,26 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None) ->
         - Views in dataset3 pointing to dataset2's views
     """
     client = ctx.obj["CLIENT"]
-    
+
     # Load tables from CSV if provided
     tables_to_include = None
     if tables_csv:
         try:
             import csv
-            with open(tables_csv, 'r') as csvfile:
+
+            with open(tables_csv, "r") as csvfile:
                 reader = csv.reader(csvfile)
                 tables_to_include = set(row[0] for row in reader if row)
             click.echo(f"Loaded {len(tables_to_include)} tables from {tables_csv}")
         except Exception as e:
             click.echo(f"Error reading CSV file: {e}")
             return
-   
+
     qualified_datasets = []
     for ds in datasets:
         qualified_ds = get_dataset_id(client, ds)
         qualified_datasets.append(qualified_ds)
-    
+
     datasets_exist = True
     for ds in qualified_datasets:
         if not check_dataset_existence(client, ds):
@@ -320,7 +319,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None) ->
             else:
                 click.echo(f"Dataset {ds} does not exist. Use --force to create it.")
                 return
-    
+
     if datasets_exist or force:
         try:
             create_dataset_chain_views(client, qualified_datasets, tables_to_include)
