@@ -1,7 +1,7 @@
 import click
 from click import Context
 from tabulate import tabulate
-from .utils.table_utils import validate_table_id, write_to_csv, create_view
+from .utils.table_utils import validate_table_id, write_to_csv, create_view, get_table_id
 from google.api_core.exceptions import NotFound
 
 
@@ -22,14 +22,13 @@ def describe(ctx: Context, table: str):
     Describes a table and its metadata.
 
     Args:
-        table: The table to describe.
+        table: The table to describe. Can be specified as dataset.table or project.dataset.table
     Returns:
         None: A table description.
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
-    validate_table_id(table)
-    table_id = f"{project}.{table}"
+    table_id = get_table_id(project, table)
     table_ref = client.get_table(table_id)
     table_data = [
         [
@@ -73,16 +72,18 @@ def chain():
 def delete(ctx: Context, table: str):
     """
     Delete a specific table
+
+    Args:
+        table: The table to delete. Can be specified as dataset.table or project.dataset.table
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
-    validate_table_id(table)
-    table_id = f"{project}.{table}"
+    table_id = get_table_id(project, table)
     confirmation_1 = click.confirm(f"Would you like to delete table {table_id}?")
     confirmation_2 = click.confirm("Are you sure?")
     if confirmation_1 and confirmation_2:
         client.delete_table(table_id)
-        click.echo(f"Table {table_id} delete successfully.")
+        click.echo(f"Table {table_id} deleted successfully.")
     else:
         click.Abort()
 
@@ -93,30 +94,31 @@ def delete(ctx: Context, table: str):
 def refresh_view(ctx: Context, table: str):
     """
     Recreates a view to refresh any columns that might have changed.
+    
     Args:
-    ctx (Context): Click Context Object.
-    table (str): Table/View we want to recreate.
+        ctx (Context): Click Context Object.
+        table (str): Table/View we want to recreate. Can be specified as dataset.table or project.dataset.table
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
-    validate_table_id(table)
-    view_id = f"{project}.{table}"
+    view_id = get_table_id(project, table)
+        
     try:
         table_ref = client.get_table(view_id)
         if table_ref.table_type == "VIEW":
             view_sql = table_ref.view_query
             refresh_query = f"""
 
-            CREATE OR REPLACE VIEW {view_id} as {view_sql}
+            CREATE OR REPLACE VIEW `{view_id}` as {view_sql}
 
             """
             refresh_view_query = client.query(refresh_query)
             refresh_view_query.result()
-            click.echo(f"View {view_id} table created successfuully.")
+            click.echo(f"View {view_id} created successfully.")
         else:
-            click.echo("Table {view_id} is not a view ")
+            click.echo(f"Table {view_id} is not a view")
     except NotFound:
-        click.echo(f"Table {table} not found.")
+        click.echo(f"Table {view_id} not found.")
 
 
 @table.command()
@@ -134,13 +136,12 @@ def head(ctx: Context, table: str, rows: int):
     Display the first few rows of a table.
 
     Args:
-        table: The table to display rows from
+        table: The table to display rows from. Can be specified as dataset.table or project.dataset.table
         rows: Number of rows to display (default: 5)
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
-    validate_table_id(table)
-    table_id = f"{project}.{table}"
+    table_id = get_table_id(project, table)
 
     try:
         table_ref = client.get_table(table_id)
@@ -195,9 +196,9 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
 
     Args:
         ctx (Context): Click Context Object.
-        table (str): The full qualified name of the target table.
+        table (str): The table to sample from. Can be specified as dataset.table or project.dataset.table
         percent (int): The percent of the table to use for sampling.
-        dest: (str): The CSV file to which you want to store the smaple data.
+        dest: (str): The CSV file to which you want to store the sample data.
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
@@ -206,8 +207,7 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
             option_name="filename",
             message="Please provide a filename that ends with .csv",
         )
-    validate_table_id(table)
-    table_id = f"{project}.{table}"
+    table_id = get_table_id(project, table)
     sample_query = f"""
 
     SELECT * FROM `{table_id}` TABLESAMPLE SYSTEM ({percent} PERCENT) LIMIT 100
@@ -233,15 +233,20 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
     Creates a view of a table
 
     Args:
-    ctx (Context): Click Context Object.
-    source_table (str): The full table_id for the source table to create the view from.
-    target_table (str): The full table_id for the target table to create the view from.
+        ctx (Context): Click Context Object.
+        source_table (str): The source table to create the view from. Can be specified as dataset.table or project.dataset.table
+        target_table (str): The target table to create. Can be specified as dataset.table or project.dataset.table
 
     Returns:
         None
     """
+    project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
-    create_view(client, source_table, target_table, force)
+    
+    source_table_id = get_table_id(project, source_table)
+    target_table_id = get_table_id(project, target_table)
+    
+    create_view(client, source_table_id, target_table_id, force)
 
 
 # TODO:

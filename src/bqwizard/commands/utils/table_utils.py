@@ -1,19 +1,64 @@
 import click
 import csv
-from .dataset_utils import check_dataset_existence, create_dataset
+
+
+def check_dataset_existence(client, dataset: str):
+    """Check if a BigQuery dataset exists.
+
+    Args:
+        client: BigQuery client instance
+        dataset: Dataset reference to check (can include project ID)
+
+    Returns:
+        bool: True if dataset exists, False otherwise
+    """
+    try:
+        parts = dataset.split(".")
+        if len(parts) == 2:
+            project_id, dataset_id = parts
+        elif len(parts) == 3:
+            project_id, dataset_id, _ = parts  
+        else:
+            dataset_id = dataset
+            project_id = client.project
+        dataset_ref = client.dataset(dataset_id, project=project_id)
+        return client.get_dataset(dataset_ref, retry=None) is not None
+    except Exception:
+        return False
+
+
+def create_dataset(client, target_dataset_ref):
+    """Create a new BigQuery dataset.
+
+    Args:
+        client: BigQuery client instance
+        target_dataset_ref: Dataset reference to create (can be dataset or project.dataset)
+
+    Returns:
+        None: Prints success message upon completion
+    """
+    dataset_parts = target_dataset_ref.split('.')
+    if len(dataset_parts) == 1:
+        target_dataset_ref = f"{client.project}.{target_dataset_ref}"
+    elif len(dataset_parts) > 2:
+        raise click.BadParameter(f"Invalid target_dataset_ref format for creation: {target_dataset_ref}. Expected 'dataset' or 'project.dataset'.")
+
+    client.create_dataset(target_dataset_ref)
+    click.echo(f"Successfully created dataset: {target_dataset_ref}")
 
 
 def validate_table_id(table: str, type: str = "short") -> bool:
     """
-    Validates that a table is passed in the dataset.table format
+    Validates that a table is passed in the correct format (dataset.table or project.dataset.table)
 
     Args:
-        table (str): The table name in the format of dataset.table.
-        full (bool): Whether to perform full validation. Defaults to True.
+        table (str): The table reference to validate.
+        type (str): The expected format type:
+                    - "short": Expects at least dataset.table format
+                    - "full": Expects project.dataset.table format
 
     Returns:
-        bool: True if table is in the dataset.table format.
-
+        bool: True if table is in the correct format, raises an exception otherwise.
     """
     if len(table.split(".")) <= 1 and type == "short":
         raise click.BadArgumentUsage(
@@ -27,12 +72,21 @@ def validate_table_id(table: str, type: str = "short") -> bool:
 
 
 def create_view(client, source_table, target_table, force):
-    validate_table_id(source_table, "full")
-    validate_table_id(target_table, "full")
+    """
+    Creates a view from a source table to a target table.
+    
+    Args:
+        client: BigQuery client
+        source_table (str): Fully qualified source table ID
+        target_table (str): Fully qualified target table ID
+        force (bool): Whether to automatically create datasets if they don't exist
+    """
     source_dataset_ok = check_dataset_existence(client, source_table)
     target_dataset_ok = check_dataset_existence(client, target_table)
-    project, dataaset, table = target_table.split(".")
-    target_dataset = f"{project}.{dataaset}"
+    
+    project, dataset, table = target_table.split(".")
+    target_dataset = f"{project}.{dataset}"
+    
     if source_dataset_ok and target_dataset_ok:
         view_query = f"""
             CREATE VIEW `{target_table}` AS SELECT * FROM `{source_table}`
@@ -68,3 +122,29 @@ def write_to_csv(data, dest: str) -> None:
         writer.writerow(headers)
         for row in data:
             writer.writerow(row)
+
+
+def get_table_id(project: str, table: str) -> str:
+    """
+    Helper function to handle table identifiers consistently.
+    Determines if the table reference is fully qualified or not and formats it appropriately.
+    
+    Args:
+        project (str): The project ID from the context
+        table (str): The table reference which could be in the format:
+                     - table (single name, invalid but caught by validate_table_id)
+                     - dataset.table
+                     - project.dataset.table (fully qualified)
+    
+    Returns:
+        str: The properly formatted table_id
+    """
+    table_parts = table.split('.')
+    
+    if len(table_parts) == 3:
+        return table
+    elif len(table_parts) == 2:
+        return f"{project}.{table}"
+    else:
+        validate_table_id(table)
+        return f"{project}.{table}"
