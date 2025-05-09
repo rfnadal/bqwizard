@@ -260,17 +260,12 @@ def expose(
     is_flag=True,
 )
 @click.option(
-    "--tables-csv",
-    help="Path to a CSV file containing a single column of table names to include in the chain.",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True),
-)
-@click.option(
     "--tables",
     help="Comma-separated list of table names to include in the chain (e.g., 'table1,table2,table3').",
     type=str,
 )
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None, tables: str = None) -> None:
+def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
@@ -278,8 +273,6 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None, ta
         datasets (tuple): Ordered sequence of dataset names to chain together. 
                            Each can be specified as 'dataset' or 'project.dataset'
         force (bool): If True, creates missing datasets automatically
-        tables_csv (str, optional): Path to a CSV file with a single column listing 
-                                   table names to include. Tables not in this list will be ignored.
         tables (str, optional): Comma-separated list of table names to include.
                                Tables not in this list will be ignored.
 
@@ -296,28 +289,11 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables_csv: str = None, ta
     # Initialize tables_to_include as None
     tables_to_include = None
     
-    # Load tables from CSV if provided
-    if tables_csv:
-        try:
-            import csv
-            with open(tables_csv, 'r') as csvfile:
-                reader = csv.reader(csvfile)
-                tables_to_include = set(row[0] for row in reader if row)
-            click.echo(f"Loaded {len(tables_to_include)} tables from {tables_csv}")
-        except Exception as e:
-            click.echo(f"Error reading CSV file: {e}")
-            return
-    
     # Parse comma-separated list if provided
     if tables:
-        # If tables_to_include is already set from CSV, merge with it
         table_list = [t.strip() for t in tables.split(',') if t.strip()]
-        if tables_to_include:
-            tables_to_include.update(table_list)
-            click.echo(f"Added {len(table_list)} tables from --tables option, total: {len(tables_to_include)}")
-        else:
-            tables_to_include = set(table_list)
-            click.echo(f"Loaded {len(tables_to_include)} tables from --tables option")
+        tables_to_include = set(table_list)
+        click.echo(f"Loaded {len(tables_to_include)} tables from --tables option")
    
     qualified_datasets = []
     for ds in datasets:
