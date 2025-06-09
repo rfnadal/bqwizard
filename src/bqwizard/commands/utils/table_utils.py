@@ -242,6 +242,8 @@ def find_dependent_views(client, project: str, table_reference: str) -> List[Dic
         return []
     
     # Search for views that reference this table
+    escaped_dataset = re.escape(dataset)
+    escaped_table = re.escape(table)
     query = f"""
     SELECT 
         table_catalog as project_id,
@@ -249,7 +251,7 @@ def find_dependent_views(client, project: str, table_reference: str) -> List[Dic
         table_name as view_name,
         view_definition
     FROM `{project}.{dataset}.INFORMATION_SCHEMA.VIEWS`
-    WHERE REGEXP_CONTAINS(view_definition, r'(?i){re.escape(dataset)}\.{re.escape(table)}')
+    WHERE REGEXP_CONTAINS(view_definition, r'(?i){escaped_dataset}\.{escaped_table}')
     ORDER BY table_name
     """
     
