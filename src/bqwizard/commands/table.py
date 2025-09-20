@@ -2,11 +2,9 @@ import click
 from click import Context
 from tabulate import tabulate
 from .utils.table_utils import (
-    validate_table_id,
     write_to_csv,
     create_view,
     get_table_id,
-    refresh_view_recursive,
 )
 from google.api_core.exceptions import NotFound
 
@@ -257,63 +255,9 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
 
 @table.command()
 @click.argument("view")
-@click.option(
-    "--dry-run",
-    is_flag=True,
-    help="Show what views would be refreshed without actually refreshing them.",
-)
-@click.option(
-    "--max-depth",
-    default=10,
-    help="Maximum dependency depth to traverse (default: 10).",
-    type=int,
-)
 @click.pass_context
-def refresh_recursive(ctx: Context, view: str, dry_run: bool, max_depth: int):
-    """
-    Recursively refresh a view and all its view dependencies.
-    
-    This command works backwards from a view, parsing its SQL to find what views/tables
-    it depends on. It then recursively finds dependencies of those views and refreshes
-    them in the correct order (dependencies first) to ensure schema changes propagate
-    through the entire dependency chain.
-
-    Args:
-        view: The view to start from. Can be specified as dataset.view or project.dataset.view
-        dry_run: If True, only show what would be refreshed without making changes
-        max_depth: Maximum dependency depth to traverse
-    """
-    project = ctx.obj["PROJECT"]
+def genealogy(ctx: Context, view: str):
+    project = ctx.obj["CLIENT"]
     client = ctx.obj["CLIENT"]
-    view_id = get_table_id(project, view)
-
-    try:
-        # Confirm the operation unless it's a dry run
-        if not dry_run:
-            click.echo(f"This will recursively refresh view and its dependencies: {view_id}")
-            if not click.confirm("Continue?"):
-                click.echo("Operation cancelled.")
-                return
-
-        # Perform the recursive refresh
-        results = refresh_view_recursive(client, project, view_id, dry_run)
-        
-        # Summary
-        click.echo(f"\n--- Summary ---")
-        click.echo(f"Starting view: {results['starting_view']}")
-        click.echo(f"Views in dependency chain: {len(results['refresh_order'])}")
-        
-        if not dry_run:
-            click.echo(f"Successfully refreshed: {len(results['refreshed'])}")
-            if results['failed']:
-                click.echo(f"Failed to refresh: {len(results['failed'])}")
-                for failure in results['failed']:
-                    click.echo(f"  - {failure['view']}: {failure['error']}")
-        
-    except NotFound:
-        click.echo(f"View {view_id} not found.")
-    except Exception as e:
-        click.echo(f"Error during recursive refresh: {str(e)}")
-
-
-# TODO:
+    source_table_id = get_table_id(project, view)
+    click.echo(source_table_id)
