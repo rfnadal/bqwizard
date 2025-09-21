@@ -1,5 +1,7 @@
 import click
 from tabulate import tabulate
+from google.api_core.exceptions import NotFound
+from .table_utils import get_table_id
 
 
 def check_dataset_existence(client, dataset: str):
@@ -45,33 +47,6 @@ def get_dataset_id(client, dataset_ref: str) -> str:
     else:
         raise click.BadArgumentUsage(
             f"Invalid dataset reference format: {dataset_ref}. Expected 'dataset' or 'project.dataset'"
-        )
-
-
-def get_table_id(project: str, table: str) -> str:
-    """
-    Helper function to handle table identifiers consistently.
-    Determines if the table reference is fully qualified or not and formats it appropriately.
-
-    Args:
-        project (str): The project ID from the context
-        table (str): The table reference which could be in the format:
-                     - table (single name, which is invalid)
-                     - dataset.table
-                     - project.dataset.table (fully qualified)
-
-    Returns:
-        str: The properly formatted table_id
-    """
-    table_parts = table.split(".")
-
-    if len(table_parts) == 3:
-        return table
-    elif len(table_parts) == 2:
-        return f"{project}.{table}"
-    else:
-        raise click.BadArgumentUsage(
-            "Please provide the table in the following format: dataset.table or project.dataset.table"
         )
 
 

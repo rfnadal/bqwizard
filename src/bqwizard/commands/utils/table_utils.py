@@ -1,55 +1,36 @@
 import click
 import csv
-import re
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List
 from google.api_core.exceptions import NotFound
+from .dataset_utils import check_dataset_existence
+from .dataset_utils import create_dataset
 
 
-def check_dataset_existence(client, dataset: str):
-    """Check if a BigQuery dataset exists.
+def get_table_id(project: str, table: str) -> str:
+    """
+    Helper function to handle table identifiers consistently.
+    Determines if the table reference is fully qualified or not and formats it appropriately.
 
     Args:
-        client: BigQuery client instance
-        dataset: Dataset reference to check (can include project ID)
+        project (str): The project ID from the context
+        table (str): The table reference which could be in the format:
+                     - table (single name, which is invalid)
+                     - dataset.table
+                     - project.dataset.table (fully qualified)
 
     Returns:
-        bool: True if dataset exists, False otherwise
+        str: The properly formatted table_id
     """
-    try:
-        parts = dataset.split(".")
-        if len(parts) == 2:
-            project_id, dataset_id = parts
-        elif len(parts) == 3:
-            project_id, dataset_id, _ = parts
-        else:
-            dataset_id = dataset
-            project_id = client.project
-        dataset_ref = client.dataset(dataset_id, project=project_id)
-        return client.get_dataset(dataset_ref, retry=None) is not None
-    except Exception:
-        return False
+    table_parts = table.split(".")
 
-
-def create_dataset(client, target_dataset_ref):
-    """Create a new BigQuery dataset.
-
-    Args:
-        client: BigQuery client instance
-        target_dataset_ref: Dataset reference to create (can be dataset or project.dataset)
-
-    Returns:
-        None: Prints success message upon completion
-    """
-    dataset_parts = target_dataset_ref.split(".")
-    if len(dataset_parts) == 1:
-        target_dataset_ref = f"{client.project}.{target_dataset_ref}"
-    elif len(dataset_parts) > 2:
-        raise click.BadParameter(
-            f"Invalid target_dataset_ref format for creation: {target_dataset_ref}. Expected 'dataset' or 'project.dataset'."
+    if len(table_parts) == 3:
+        return table
+    elif len(table_parts) == 2:
+        return f"{project}.{table}"
+    else:
+        raise click.BadArgumentUsage(
+            "Please provide the table in the following format: dataset.table or project.dataset.table"
         )
-
-    client.create_dataset(target_dataset_ref)
-    click.echo(f"Successfully created dataset: {target_dataset_ref}")
 
 
 def validate_table_id(table: str, type: str = "short") -> bool:
@@ -127,32 +108,6 @@ def write_to_csv(data, dest: str) -> None:
         writer.writerow(headers)
         for row in data:
             writer.writerow(row)
-
-
-def get_table_id(project: str, table: str) -> str:
-    """
-    Helper function to handle table identifiers consistently.
-    Determines if the table reference is fully qualified or not and formats it appropriately.
-
-    Args:
-        project (str): The project ID from the context
-        table (str): The table reference which could be in the format:
-                     - table (single name, invalid but caught by validate_table_id)
-                     - dataset.table
-                     - project.dataset.table (fully qualified)
-
-    Returns:
-        str: The properly formatted table_id
-    """
-    table_parts = table.split(".")
-
-    if len(table_parts) == 3:
-        return table
-    elif len(table_parts) == 2:
-        return f"{project}.{table}"
-    else:
-        validate_table_id(table)
-        return f"{project}.{table}"
 
 
 def get_views_in_dataset(client, project: str, dataset: str) -> List[Dict]:

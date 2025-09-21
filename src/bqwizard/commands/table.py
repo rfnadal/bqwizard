@@ -66,9 +66,6 @@ def describe(ctx: Context, table: str):
     click.echo("\n")
 
 
-def chain():
-    pass
-
 
 @table.command()
 @click.argument("table")
@@ -257,7 +254,7 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
 @click.argument("view")
 @click.pass_context
 def genealogy(ctx: Context, view: str):
-    project = ctx.obj["CLIENT"]
+    project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
     source_table_id = get_table_id(project, view)
     click.echo(source_table_id)

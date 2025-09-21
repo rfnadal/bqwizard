@@ -178,3 +178,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+things_to_fix.md
