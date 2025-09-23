@@ -68,13 +68,44 @@ def resolve_layer_references(references: List[str]) -> List[str]:
     return resolved
 
 
-def parse_layer_shorthand(layers_str: str, datasets_str: str) -> List[str]:
+def apply_dataset_transformation(dataset_name: str, remove_suffix: str = None, remove_prefix: str = None) -> str:
+    """
+    Apply transformation to dataset name by removing suffix or prefix.
+
+    Args:
+        dataset_name: Original dataset name
+        remove_suffix: Suffix to remove (e.g., "_raw")
+        remove_prefix: Prefix to remove (e.g., "raw_")
+
+    Returns:
+        str: Transformed dataset name
+
+    Raises:
+        click.BadArgumentUsage: If transformation results in empty name
+    """
+    transformed_name = dataset_name
+
+    if remove_suffix and dataset_name.endswith(remove_suffix):
+        transformed_name = dataset_name[:-len(remove_suffix)]
+
+    if remove_prefix and dataset_name.startswith(remove_prefix):
+        transformed_name = dataset_name[len(remove_prefix):]
+
+    if not transformed_name:
+        raise click.BadArgumentUsage(f"Transformation of '{dataset_name}' results in empty name")
+
+    return transformed_name
+
+
+def parse_layer_shorthand(layers_str: str, datasets_str: str, remove_suffix: str = None, remove_prefix: str = None) -> List[str]:
     """
     Parse layer shorthand syntax like --layers raw,clean,analytics --datasets customer_data
 
     Args:
         layers_str: Comma-separated layer names (e.g., "raw,clean,analytics")
         datasets_str: Comma-separated dataset names (e.g., "customer_data,user_data")
+        remove_suffix: Optional suffix to remove from dataset names in target layers
+        remove_prefix: Optional prefix to remove from dataset names in target layers
 
     Returns:
         List[str]: Fully qualified dataset references
@@ -102,8 +133,16 @@ def parse_layer_shorthand(layers_str: str, datasets_str: str) -> List[str]:
     # Generate all combinations
     result = []
     for dataset_name in dataset_names:
-        for layer_name in layer_names:
-            layer_ref = f"{layer_name.lower()}.{dataset_name}"
+        for i, layer_name in enumerate(layer_names):
+            # Apply transformation only to target layers (not the first layer)
+            if i == 0:
+                # First layer uses original name
+                current_dataset_name = dataset_name
+            else:
+                # Subsequent layers use transformed name
+                current_dataset_name = apply_dataset_transformation(dataset_name, remove_suffix, remove_prefix)
+
+            layer_ref = f"{layer_name.lower()}.{current_dataset_name}"
             resolved_ref = resolve_layer_reference(layer_ref)
             result.append(resolved_ref)
 

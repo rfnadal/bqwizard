@@ -90,7 +90,7 @@ Once configured, you can use layer references instead of full project names:
 bqwizard dataset chain raw.customer_data staging.customer_data analytics.customer_data
 
 # Use layer shorthand for multiple datasets
-bqwizard dataset chain --layers raw,staging,analytics --datasets customer_data,user_data
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data,user_data
 ```
 
 ## Dataset Commands
@@ -138,10 +138,36 @@ bqwizard dataset chain dataset1 dataset2 dataset3 --dry-run
 bqwizard dataset chain raw.customer_data staging.customer_data analytics.customer_data
 
 # Layer shorthand for multiple datasets
-bqwizard dataset chain --layers raw,staging,analytics --datasets customer_data,user_data
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data,user_data
+
+# Transform dataset names by removing suffix (e.g., customer_data_raw → customer_data)
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data_raw --remove-suffix "_raw"
+
+# Transform dataset names by removing prefix (e.g., raw_customer_data → customer_data)
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names raw_customer_data --remove-prefix "raw_"
 
 # Combined options
-bqwizard dataset chain --layers raw,staging --datasets customer_data --tables "orders,payments" --dry-run
+bqwizard dataset chain --layers raw,staging --dataset-names customer_data --tables "orders,payments" --dry-run
+```
+
+### Dataset Name Transformations
+
+When working with layers, you can transform dataset names as they flow through the chain:
+
+```bash
+# Remove suffix from dataset names in target layers
+# Result: raw.customer_data_raw → staging.customer_data → analytics.customer_data
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data_raw --remove-suffix "_raw"
+
+# Remove prefix from dataset names in target layers
+# Result: raw.raw_customer_data → staging.customer_data → analytics.customer_data
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names raw_customer_data --remove-prefix "raw_"
+
+# Multiple datasets with suffix removal
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names orders_raw,customers_raw,products_raw --remove-suffix "_raw"
+
+# Combined with table filtering
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data_v1 --remove-suffix "_v1" --tables "orders,payments" --dry-run
 ```
 
 ### Cross-Project Dataset Exposure
@@ -235,13 +261,16 @@ bqwizard config set-layer staging my-company-staging
 bqwizard config set-layer analytics my-company-analytics
 
 # 2. Create pipeline for customer data
-bqwizard dataset chain --layers raw,staging,analytics --datasets customer_data --dry-run
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data --dry-run
 
 # 3. Execute after reviewing dry-run results
-bqwizard dataset chain --layers raw,staging,analytics --datasets customer_data
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data
 
 # 4. Add more datasets to the same pipeline
-bqwizard dataset chain --layers raw,staging,analytics --datasets user_data,product_data
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names user_data,product_data
+
+# 5. Handle datasets with naming suffixes
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data_raw,user_data_raw --remove-suffix "_raw"
 ```
 
 ### Cross-Project Data Sharing
@@ -263,7 +292,7 @@ Process only specific tables through your pipeline:
 
 ```bash
 # Only process critical tables
-bqwizard dataset chain --layers raw,staging,analytics --datasets customer_data --tables "orders,payments,subscriptions"
+bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data --tables "orders,payments,subscriptions"
 
 # Chain specific tables across datasets
 bqwizard table chain raw.customer_data.orders raw.customer_data.payments staging.customer_data analytics.customer_data

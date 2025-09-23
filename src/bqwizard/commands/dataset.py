@@ -280,8 +280,18 @@ def expose(
     help="Comma-separated dataset names to use with --layers. Example: customer_data,user_data",
     type=str,
 )
+@click.option(
+    "--remove-suffix",
+    help="Remove specified suffix from dataset names in target layers. Example: '_raw'",
+    type=str,
+)
+@click.option(
+    "--remove-prefix",
+    help="Remove specified prefix from dataset names in target layers. Example: 'raw_'",
+    type=str,
+)
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool, tables: str, dry_run: bool, layers: str, dataset_names: str) -> None:
+def chain(ctx: Context, datasets: tuple, force: bool, tables: str, dry_run: bool, layers: str, dataset_names: str, remove_suffix: str, remove_prefix: str) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
@@ -303,13 +313,26 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str, dry_run: bool
     """
     client = ctx.obj["CLIENT"]
 
+    # Validate transformation options
+    if remove_suffix and remove_prefix:
+        click.echo("Error: Cannot use both --remove-suffix and --remove-prefix together", err=True)
+        ctx.exit(1)
+
+    if (remove_suffix or remove_prefix) and not (layers and dataset_names):
+        click.echo("Error: --remove-suffix and --remove-prefix can only be used with --layers and --dataset-names", err=True)
+        ctx.exit(1)
+
     if layers and dataset_names:
         try:
-            qualified_datasets = parse_layer_shorthand(layers, dataset_names)
+            qualified_datasets = parse_layer_shorthand(layers, dataset_names, remove_suffix, remove_prefix)
             if dry_run:
                 click.echo("Using layer shorthand mode:")
                 click.echo(f"Layers: {layers}")
                 click.echo(f"Dataset names: {dataset_names}")
+                if remove_suffix:
+                    click.echo(f"Remove suffix: '{remove_suffix}'")
+                if remove_prefix:
+                    click.echo(f"Remove prefix: '{remove_prefix}'")
                 click.echo(f"Resolved to: {' -> '.join(qualified_datasets)}")
                 click.echo("-" * 50)
         except click.BadArgumentUsage as e:
