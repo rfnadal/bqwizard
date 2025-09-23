@@ -1,5 +1,6 @@
 import click
 from pydantic import BaseModel, Field
+from typing import Dict, Optional
 import platformdirs
 from pathlib import Path
 import json
@@ -7,10 +8,14 @@ import os
 
 
 class Settings(BaseModel):
-    """Pydatinc Model that represents the user preference settings."""
+    """Pydantic Model that represents the user preference settings."""
 
     project: str = Field(
         ..., description="The project you want to use for the current session"
+    )
+    layers: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Layer to project mappings (e.g., {'raw': 'project1', 'clean': 'project2'})"
     )
 
 
@@ -37,7 +42,7 @@ def create_initial_config(config_file_dir: str) -> None:
         None: Creates config file.
     """
     with open(config_file_dir, "w") as f:
-        init = Settings(project="")
+        init = Settings(project="", layers={})
         data = init.model_dump_json()
         json.dump(data, f, indent=4)
 
@@ -84,3 +89,67 @@ def get_project_from_config() -> str:
     config_file_dir = get_user_config_dir()
     settings = load_config(config_file_dir)
     return settings.project
+
+
+def set_layer(layer_name: str, project_id: str) -> None:
+    """Set a layer to project mapping in the config.
+
+    Args:
+        layer_name: Name of the layer (e.g., 'raw', 'clean', 'analytics')
+        project_id: Project ID for this layer
+
+    Returns:
+        None: Updates the configuration file
+    """
+    config_file_dir = get_user_config_dir()
+    settings = load_config(config_file_dir)
+
+    # Update layers dictionary
+    settings.layers[layer_name] = project_id
+
+    # Save updated settings
+    update_config(config_file_dir, settings)
+
+
+def get_layer_project(layer_name: str) -> Optional[str]:
+    """Get the project ID for a specific layer.
+
+    Args:
+        layer_name: Name of the layer to lookup
+
+    Returns:
+        str: Project ID for the layer, or None if not configured
+    """
+    config_file_dir = get_user_config_dir()
+    settings = load_config(config_file_dir)
+    return settings.layers.get(layer_name)
+
+
+def get_all_layers() -> Dict[str, str]:
+    """Get all configured layers.
+
+    Returns:
+        Dict[str, str]: Dictionary mapping layer names to project IDs
+    """
+    config_file_dir = get_user_config_dir()
+    settings = load_config(config_file_dir)
+    return settings.layers.copy()
+
+
+def remove_layer(layer_name: str) -> bool:
+    """Remove a layer from the configuration.
+
+    Args:
+        layer_name: Name of the layer to remove
+
+    Returns:
+        bool: True if layer was removed, False if it didn't exist
+    """
+    config_file_dir = get_user_config_dir()
+    settings = load_config(config_file_dir)
+
+    if layer_name in settings.layers:
+        del settings.layers[layer_name]
+        update_config(config_file_dir, settings)
+        return True
+    return False

@@ -126,7 +126,7 @@ def create_dataset_chain(client, datasets):
             create_dataset(client, qualified_dataset)
 
 
-def create_dataset_chain_views(client, datasets, tables_to_include=None):
+def create_dataset_chain_views(client, datasets, tables_to_include=None, dry_run=False):
     """Create views in each subsequent dataset that reference tables from the previous dataset.
 
     Args:
@@ -136,6 +136,7 @@ def create_dataset_chain_views(client, datasets, tables_to_include=None):
                         Dataset references can be 'dataset' or 'project.dataset'.
         tables_to_include (set, optional): Set of table names to include in the chain.
                                           If provided, only tables in this set will be included.
+        dry_run (bool): If True, only shows what would be created without creating anything.
 
     Returns:
         None: Creates views and prints progress messages
@@ -181,12 +182,15 @@ def create_dataset_chain_views(client, datasets, tables_to_include=None):
                         continue
 
                     source_table_ref_for_view = f"{current_dataset_fq}.{table_name}"
-                    click.echo(
-                        f"{source_table_ref_for_view} --> {next_dataset_fq}.{table_name}"
-                    )
-                    create_view(
-                        client, source_table_ref_for_view, next_dataset_fq, table_name
-                    )
+                    target_view_name = f"{next_dataset_fq}.{table_name}"
+
+                    if dry_run:
+                        click.echo(f"Would create view: {target_view_name} -> {source_table_ref_for_view}")
+                    else:
+                        click.echo(f"{source_table_ref_for_view} --> {target_view_name}")
+                        create_view(
+                            client, source_table_ref_for_view, next_dataset_fq, table_name
+                        )
             except Exception as e:
                 click.echo(f"Error processing dataset {current_dataset_fq}: {e}")
 

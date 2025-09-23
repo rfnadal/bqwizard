@@ -8,6 +8,8 @@ from .utils.dataset_utils import (
     describe_dataset,
     get_dataset_id,
 )
+from .utils.chain_utils import create_dataset_chain_with_tracking
+from .utils.layer_utils import resolve_layer_references, parse_layer_shorthand, format_layer_help
 from tabulate import tabulate
 from google.api_core.exceptions import NotFound
 
@@ -263,8 +265,23 @@ def expose(
     help="Comma-separated list of table names to include in the chain (e.g., 'table1,table2,table3').",
     type=str,
 )
+@click.option(
+    "--dry-run",
+    help="Preview what will be created without actually creating anything.",
+    is_flag=True,
+)
+@click.option(
+    "--layers",
+    help="Comma-separated layer names to chain (requires --datasets). Example: raw,clean,analytics",
+    type=str,
+)
+@click.option(
+    "--dataset-names",
+    help="Comma-separated dataset names to use with --layers. Example: customer_data,user_data",
+    type=str,
+)
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool, tables: str) -> None:
+def chain(ctx: Context, datasets: tuple, force: bool, tables: str, dry_run: bool, layers: str, dataset_names: str) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
@@ -274,6 +291,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str) -> None:
         force (bool): If True, creates missing datasets automatically
         tables (str, optional): Comma-separated list of table names to include.
                                Tables not in this list will be ignored.
+        dry_run (bool): If True, shows what would be created without creating anything.
 
     Returns:
         None: Prints completion message when chain is created
@@ -285,43 +303,106 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str) -> None:
     """
     client = ctx.obj["CLIENT"]
 
-    # Initialize tables_to_include as None
+    if layers and dataset_names:
+        try:
+            qualified_datasets = parse_layer_shorthand(layers, dataset_names)
+            if dry_run:
+                click.echo("Using layer shorthand mode:")
+                click.echo(f"Layers: {layers}")
+                click.echo(f"Dataset names: {dataset_names}")
+                click.echo(f"Resolved to: {' -> '.join(qualified_datasets)}")
+                click.echo("-" * 50)
+        except click.BadArgumentUsage as e:
+            click.echo(f"Layer shorthand error: {e}", err=True)
+            click.echo(f"\n{format_layer_help()}")
+            ctx.exit(1)
+    elif layers or dataset_names:
+        click.echo("Error: Both --layers and --dataset-names must be provided together", err=True)
+        ctx.exit(1)
+    else:
+        if len(datasets) < 2:
+            click.echo("Error: At least 2 datasets are required to create a chain.", err=True)
+            ctx.exit(1)
+
+        try:
+            dataset_list = list(datasets)
+            qualified_datasets = resolve_layer_references(dataset_list)
+
+            if dry_run and dataset_list != qualified_datasets:
+                click.echo("Resolved layer references:")
+                for original, resolved in zip(dataset_list, qualified_datasets):
+                    if original != resolved:
+                        click.echo(f"  {original} -> {resolved}")
+                click.echo("-" * 50)
+        except click.BadArgumentUsage as e:
+            click.echo(f"Layer resolution error: {e}", err=True)
+            click.echo(f"\n{format_layer_help()}")
+            ctx.exit(1)
+
+    if len(qualified_datasets) < 2:
+        click.echo("Error: At least 2 datasets are required to create a chain.", err=True)
+        ctx.exit(1)
+
+    if dry_run:
+        click.echo("DRY RUN MODE - No changes will be made")
+        click.echo("=" * 50)
+
     tables_to_include = None
 
-    # Parse comma-separated list if provided
     if tables:
         table_list = [t.strip() for t in tables.split(",") if t.strip()]
         tables_to_include = set(table_list)
         click.echo(f"Loaded {len(tables_to_include)} tables from --tables option")
 
-    qualified_datasets = []
-    for ds in datasets:
-        qualified_ds = get_dataset_id(client, ds)
-        qualified_datasets.append(qualified_ds)
 
     datasets_exist = True
+    datasets_to_create = []
+
     for ds in qualified_datasets:
         if not check_dataset_existence(client, ds):
             datasets_exist = False
+            datasets_to_create.append(ds)
             if force:
-                try:
-                    create_dataset(client, ds)
-                    click.echo(f"Created dataset {ds}")
-                except Exception as e:
-                    click.echo(f"Failed to create dataset {ds}: {e}")
-                    return
+                if dry_run:
+                    click.echo(f"Would create dataset: {ds}")
+                else:
+                    try:
+                        create_dataset(client, ds)
+                        click.echo(f"Created dataset {ds}")
+                    except Exception as e:
+                        click.echo(f"Failed to create dataset {ds}: {e}", err=True)
+                        return
             else:
-                click.echo(f"Dataset {ds} does not exist. Use --force to create it.")
+                if dry_run:
+                    click.echo(f"Dataset {ds} does not exist and would need --force to create.")
+                else:
+                    click.echo(f"Dataset {ds} does not exist. Use --force to create it.", err=True)
                 return
 
     if datasets_exist or force:
-        try:
-            create_dataset_chain_views(client, qualified_datasets, tables_to_include)
-            click.echo("Chain completed.")
-        except Exception as e:
-            click.echo(f"Error creating dataset chain: {e}")
+        if dry_run:
+            click.echo("\nPreview of chain operations:")
+            click.echo("-" * 40)
+
+        success = create_dataset_chain_with_tracking(
+            client, qualified_datasets, tables_to_include, dry_run
+        )
+
+        if dry_run:
+            if success:
+                click.echo("\nDry run completed successfully. Use without --dry-run to execute.")
+            else:
+                click.echo("\nDry run found issues that would prevent execution.", err=True)
+        else:
+            if success:
+                click.echo("Chain completed successfully.")
+            else:
+                click.echo("Chain operation failed.", err=True)
     else:
-        click.echo("Not all target datasets exist. Either create them or use --force.")
+        if dry_run:
+            click.echo("Not all target datasets exist. Would need --force to create them.")
+        else:
+            click.echo("Not all target datasets exist. Either create them or use --force.", err=True)
 
 
 @dataset.command()
