@@ -170,6 +170,27 @@ bqwizard dataset chain --layers raw,staging,analytics --dataset-names orders_raw
 bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data_v1 --remove-suffix "_v1" --tables "orders,payments" --dry-run
 ```
 
+### Dataset Authorization Management
+
+Manage BigQuery authorized datasets to allow views in one dataset to access tables in another dataset:
+
+```bash
+# Authorize analytics dataset views to access raw dataset
+bqwizard dataset authorize-add raw.customer_data analytics.customer_data
+
+# Cross-project authorization
+bqwizard dataset authorize-add project1.shared_data project2.analytics_views
+
+# List all datasets authorized to access a shared dataset
+bqwizard dataset authorize-list raw.customer_data
+
+# Remove authorization
+bqwizard dataset authorize-remove raw.customer_data analytics.customer_data
+
+# Show complete access policy for a dataset
+bqwizard dataset authorize-show raw.customer_data
+```
+
 ### Cross-Project Dataset Exposure
 
 ```bash
@@ -246,6 +267,12 @@ bqwizard config set-layer raw my-project-raw
 bqwizard config list-layers
 bqwizard config get-layer raw
 bqwizard config remove-layer raw
+
+# Dataset authorization management
+bqwizard dataset authorize-add shared_dataset authorized_dataset
+bqwizard dataset authorize-list shared_dataset
+bqwizard dataset authorize-remove shared_dataset authorized_dataset
+bqwizard dataset authorize-show dataset
 ```
 
 ## Common Workflows
@@ -271,6 +298,10 @@ bqwizard dataset chain --layers raw,staging,analytics --dataset-names user_data,
 
 # 5. Handle datasets with naming suffixes
 bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_data_raw,user_data_raw --remove-suffix "_raw"
+
+# 6. Set up dataset authorizations for secure data sharing
+bqwizard dataset authorize-add raw.customer_data staging.customer_data
+bqwizard dataset authorize-add staging.customer_data analytics.customer_data
 ```
 
 ### Cross-Project Data Sharing
@@ -297,6 +328,26 @@ bqwizard dataset chain --layers raw,staging,analytics --dataset-names customer_d
 # Chain specific tables across datasets
 bqwizard table chain raw.customer_data.orders raw.customer_data.payments staging.customer_data analytics.customer_data
 ```
+
+### Secure Data Governance
+
+Set up secure cross-project data access with proper authorization:
+
+```bash
+# 1. Create datasets across projects
+bqwizard dataset create raw.sensitive_customer_data --location US --force
+bqwizard dataset create analytics.customer_reports --location US --force
+
+# 2. Set up authorized dataset access
+# Allow analytics views to access raw data without direct table access
+bqwizard dataset authorize-add raw.sensitive_customer_data analytics.customer_reports
+
+# 3. Verify authorization setup
+bqwizard dataset authorize-list raw.sensitive_customer_data
+
+# 4. Create filtered views in analytics dataset
+# Users can now query analytics.customer_reports views that access raw.sensitive_customer_data
+# but cannot directly access the raw tables
 
 ## Best Practices
 

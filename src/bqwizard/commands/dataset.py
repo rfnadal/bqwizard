@@ -9,7 +9,8 @@ from .utils.dataset_utils import (
     get_dataset_id,
 )
 from .utils.chain_utils import create_dataset_chain_with_tracking
-from .utils.layer_utils import resolve_layer_references, parse_layer_shorthand, format_layer_help
+from .utils.layer_utils import resolve_layer_references, parse_layer_shorthand, format_layer_help, resolve_layer_reference
+from .utils.dataset_auth_utils import DatasetAuthorizationManager
 from tabulate import tabulate
 from google.api_core.exceptions import NotFound
 
@@ -449,3 +450,148 @@ def describe(ctx: Context, dataset: str) -> None:
     client = ctx.obj["CLIENT"]
     project = ctx.obj["PROJECT"]
     describe_dataset(client, dataset, project)
+
+
+@dataset.command("authorize-add")
+@click.argument("shared_dataset")
+@click.argument("authorized_dataset")
+@click.pass_context
+def authorize_add(ctx: Context, shared_dataset: str, authorized_dataset: str) -> None:
+    """Add dataset authorization for views to access shared dataset.
+
+    Args:
+        ctx: Click context object containing client information
+        shared_dataset: Dataset that contains the data to be shared
+        authorized_dataset: Dataset whose views will be authorized to access shared dataset
+
+    Examples:
+        bqwizard dataset authorize-add raw.customer_data analytics.customer_data
+        bqwizard dataset authorize-add project1.shared_data project2.view_data
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        # Resolve layer references if applicable
+        shared_id = resolve_layer_reference(shared_dataset)
+        auth_id = resolve_layer_reference(authorized_dataset)
+
+        result = auth_manager.add_authorized_dataset(shared_id, auth_id)
+        click.echo(result)
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@dataset.command("authorize-remove")
+@click.argument("shared_dataset")
+@click.argument("authorized_dataset")
+@click.pass_context
+def authorize_remove(ctx: Context, shared_dataset: str, authorized_dataset: str) -> None:
+    """Remove dataset authorization.
+
+    Args:
+        ctx: Click context object containing client information
+        shared_dataset: Dataset that contains the shared data
+        authorized_dataset: Dataset whose authorization should be removed
+
+    Examples:
+        bqwizard dataset authorize-remove raw.customer_data analytics.customer_data
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        shared_id = resolve_layer_reference(shared_dataset)
+        auth_id = resolve_layer_reference(authorized_dataset)
+
+        result = auth_manager.remove_authorized_dataset(shared_id, auth_id)
+        click.echo(result)
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@dataset.command("authorize-list")
+@click.argument("dataset")
+@click.pass_context
+def authorize_list(ctx: Context, dataset: str) -> None:
+    """List authorized datasets that can access the specified dataset.
+
+    Args:
+        ctx: Click context object containing client information
+        dataset: Dataset to check for authorizations
+
+    Examples:
+        bqwizard dataset authorize-list raw.customer_data
+        bqwizard dataset authorize-list my_shared_dataset
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        dataset_id = resolve_layer_reference(dataset)
+        authorized = auth_manager.list_authorized_datasets(dataset_id)
+
+        if not authorized:
+            click.echo(f"No authorized datasets found for {dataset_id}")
+        else:
+            click.echo(f"Authorized datasets for {dataset_id}:")
+            for auth in authorized:
+                target_types = ", ".join(auth['target_types'])
+                click.echo(f"  {auth['project_id']}.{auth['dataset_id']} (target_types: {target_types})")
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@dataset.command("authorize-show")
+@click.argument("dataset")
+@click.pass_context
+def authorize_show(ctx: Context, dataset: str) -> None:
+    """Show complete access policy for a dataset.
+
+    Args:
+        ctx: Click context object containing client information
+        dataset: Dataset to show access policy for
+
+    Examples:
+        bqwizard dataset authorize-show raw.customer_data
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        dataset_id = resolve_layer_reference(dataset)
+        access_entries = auth_manager.show_all_access_entries(dataset_id)
+
+        if not access_entries:
+            click.echo(f"No access entries found for {dataset_id}")
+        else:
+            click.echo(f"Access policy for {dataset_id}:")
+            click.echo("-" * 50)
+
+            for i, entry in enumerate(access_entries, 1):
+                click.echo(f"Entry {i}:")
+
+                # Handle different entry types
+                if 'role' in entry:
+                    click.echo(f"  Role: {entry['role']}")
+
+                if 'userByEmail' in entry:
+                    click.echo(f"  User: {entry['userByEmail']}")
+                elif 'groupByEmail' in entry:
+                    click.echo(f"  Group: {entry['groupByEmail']}")
+                elif 'domain' in entry:
+                    click.echo(f"  Domain: {entry['domain']}")
+                elif 'specialGroup' in entry:
+                    click.echo(f"  Special Group: {entry['specialGroup']}")
+                elif 'dataset' in entry:
+                    dataset_info = entry['dataset']['dataset']
+                    target_types = ", ".join(entry['dataset'].get('target_types', ['VIEWS']))
+                    click.echo(f"  Authorized Dataset: {dataset_info['project_id']}.{dataset_info['dataset_id']}")
+                    click.echo(f"  Target Types: {target_types}")
+                elif 'view' in entry:
+                    view_info = entry['view']
+                    click.echo(f"  Authorized View: {view_info['projectId']}.{view_info['datasetId']}.{view_info['tableId']}")
+
+                click.echo()  # Empty line between entries
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
