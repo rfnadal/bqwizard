@@ -4,7 +4,10 @@ from tabulate import tabulate
 from .utils.table_utils import (
     write_to_csv,
     create_view,
+)
+from .utils.reference_utils import (
     get_table_id,
+    validate_table_id,
 )
 from google.api_core.exceptions import NotFound
 
@@ -32,6 +35,9 @@ def describe(ctx: Context, table: str):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
     table_ref = client.get_table(table_id)
     table_data = [
@@ -79,6 +85,9 @@ def delete(ctx: Context, table: str):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
     confirmation_1 = click.confirm(f"Would you like to delete table {table_id}?")
     confirmation_2 = click.confirm("Are you sure?")
@@ -102,6 +111,9 @@ def refresh_view(ctx: Context, table: str):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     view_id = get_table_id(project, table)
 
     try:
@@ -142,6 +154,9 @@ def head(ctx: Context, table: str, rows: int):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
 
     try:
@@ -208,6 +223,9 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
             option_name="filename",
             message="Please provide a filename that ends with .csv",
         )
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
     sample_query = f"""
 
@@ -244,6 +262,9 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
 
+    # Validate both table references before processing
+    validate_table_id(source_table, "short")
+    validate_table_id(target_table, "short")
     source_table_id = get_table_id(project, source_table)
     target_table_id = get_table_id(project, target_table)
 
@@ -256,5 +277,8 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
 def genealogy(ctx: Context, view: str):
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(view, "short")
     source_table_id = get_table_id(project, view)
     click.echo(source_table_id)

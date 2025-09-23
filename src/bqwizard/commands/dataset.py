@@ -4,7 +4,6 @@ from .utils.dataset_utils import (
     check_dataset_existence,
     create_view,
     create_dataset,
-    create_dataset_chain,
     create_dataset_chain_views,
     describe_dataset,
     get_dataset_id,
@@ -265,12 +264,12 @@ def expose(
     type=str,
 )
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> None:
+def chain(ctx: Context, datasets: tuple, force: bool, tables: str) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
         ctx: Click context object containing client information
-        datasets (tuple): Ordered sequence of dataset names to chain together. 
+        datasets (tuple): Ordered sequence of dataset names to chain together.
                            Each can be specified as 'dataset' or 'project.dataset'
         force (bool): If True, creates missing datasets automatically
         tables (str, optional): Comma-separated list of table names to include.
@@ -285,21 +284,21 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> Non
         - Views in dataset3 pointing to dataset2's views
     """
     client = ctx.obj["CLIENT"]
-    
+
     # Initialize tables_to_include as None
     tables_to_include = None
-    
+
     # Parse comma-separated list if provided
     if tables:
-        table_list = [t.strip() for t in tables.split(',') if t.strip()]
+        table_list = [t.strip() for t in tables.split(",") if t.strip()]
         tables_to_include = set(table_list)
         click.echo(f"Loaded {len(tables_to_include)} tables from --tables option")
-   
+
     qualified_datasets = []
     for ds in datasets:
         qualified_ds = get_dataset_id(client, ds)
         qualified_datasets.append(qualified_ds)
-    
+
     datasets_exist = True
     for ds in qualified_datasets:
         if not check_dataset_existence(client, ds):
@@ -314,7 +313,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> Non
             else:
                 click.echo(f"Dataset {ds} does not exist. Use --force to create it.")
                 return
-    
+
     if datasets_exist or force:
         try:
             create_dataset_chain_views(client, qualified_datasets, tables_to_include)

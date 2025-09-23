@@ -4,57 +4,7 @@ from typing import Dict, List
 from google.api_core.exceptions import NotFound
 from .dataset_utils import check_dataset_existence
 from .dataset_utils import create_dataset
-
-
-def get_table_id(project: str, table: str) -> str:
-    """
-    Helper function to handle table identifiers consistently.
-    Determines if the table reference is fully qualified or not and formats it appropriately.
-
-    Args:
-        project (str): The project ID from the context
-        table (str): The table reference which could be in the format:
-                     - table (single name, which is invalid)
-                     - dataset.table
-                     - project.dataset.table (fully qualified)
-
-    Returns:
-        str: The properly formatted table_id
-    """
-    table_parts = table.split(".")
-
-    if len(table_parts) == 3:
-        return table
-    elif len(table_parts) == 2:
-        return f"{project}.{table}"
-    else:
-        raise click.BadArgumentUsage(
-            "Please provide the table in the following format: dataset.table or project.dataset.table"
-        )
-
-
-def validate_table_id(table: str, type: str = "short") -> bool:
-    """
-    Validates that a table is passed in the correct format (dataset.table or project.dataset.table)
-
-    Args:
-        table (str): The table reference to validate.
-        type (str): The expected format type:
-                    - "short": Expects at least dataset.table format
-                    - "full": Expects project.dataset.table format
-
-    Returns:
-        bool: True if table is in the correct format, raises an exception otherwise.
-    """
-    if len(table.split(".")) <= 1 and type == "short":
-        raise click.BadArgumentUsage(
-            "Please provide the table in the following format: dataset.table"
-        )
-    elif len(table.split(".")) <= 2 and type == "full":
-        raise click.BadArgumentUsage(
-            "Please provide the table in the following format: project.dataset.table"
-        )
-    return True
+from .reference_utils import get_table_id, validate_table_id
 
 
 def create_view(client, source_table, target_table, force):
@@ -67,10 +17,19 @@ def create_view(client, source_table, target_table, force):
         target_table (str): Fully qualified target table ID
         force (bool): Whether to automatically create datasets if they don't exist
     """
+    # Validate both source and target table references
+    validate_table_id(source_table, "full")
+    validate_table_id(target_table, "full")
+
     source_dataset_ok = check_dataset_existence(client, source_table)
     target_dataset_ok = check_dataset_existence(client, target_table)
 
-    project, dataset, table = target_table.split(".")
+    # Safely split the target table reference
+    target_parts = [part.strip() for part in target_table.split(".") if part.strip()]
+    if len(target_parts) != 3:
+        raise click.BadArgumentUsage(f"Invalid target table format: {target_table}")
+
+    project, dataset, table = target_parts
     target_dataset = f"{project}.{dataset}"
 
     if source_dataset_ok and target_dataset_ok:

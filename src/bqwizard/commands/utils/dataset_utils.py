@@ -1,7 +1,7 @@
 import click
 from tabulate import tabulate
 from google.api_core.exceptions import NotFound
-from .table_utils import get_table_id
+from .reference_utils import get_table_id
 
 
 def check_dataset_existence(client, dataset: str):
