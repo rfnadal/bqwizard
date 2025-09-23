@@ -375,7 +375,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str, dry_run: bool
     if tables:
         table_list = [t.strip() for t in tables.split(",") if t.strip()]
         tables_to_include = set(table_list)
-        click.echo(f"Loaded {len(tables_to_include)} tables from --tables option")
+        click.echo(f"Loaded {len(tables_to_include)} tables from --tables option: {', '.join(sorted(tables_to_include))}")
 
 
     datasets_exist = True

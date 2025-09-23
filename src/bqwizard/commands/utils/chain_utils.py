@@ -35,6 +35,7 @@ class ChainOperationTracker:
                 "source": source_table,
                 "status": "would_create"
             })
+            click.echo(f"    {source_table} -> {target_view_id}")
             return True
 
         try:
@@ -180,14 +181,26 @@ def create_dataset_chain_with_tracking(
 
                     # Filter tables if specified
                     if tables_to_include:
+                        original_count = len(tables_in_current_dataset)
                         tables_in_current_dataset = [
                             t for t in tables_in_current_dataset
                             if t in tables_to_include
                         ]
+                        if dry_run:
+                            click.echo(f"Dataset {current_dataset_fq}: {len(tables_in_current_dataset)}/{original_count} tables match filter")
+                            if tables_in_current_dataset:
+                                click.echo(f"  Tables to process: {', '.join(sorted(tables_in_current_dataset))}")
+                    elif dry_run:
+                        click.echo(f"Dataset {current_dataset_fq}: processing all {len(tables_in_current_dataset)} tables")
+                        if tables_in_current_dataset:
+                            click.echo(f"  Tables: {', '.join(sorted(tables_in_current_dataset))}")
 
                     total_operations += len(tables_in_current_dataset)
 
                     # Create views for each table
+                    if tables_in_current_dataset and dry_run:
+                        click.echo(f"  Will create views in {next_dataset_fq}:")
+
                     for table_name in tables_in_current_dataset:
                         source_table_ref = f"{current_dataset_fq}.{table_name}"
 
