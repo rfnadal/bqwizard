@@ -109,23 +109,6 @@ def create_dataset(client, target_dataset_ref):
     click.echo(f"Successfully created dataset: {target_dataset_ref}")
 
 
-def create_dataset_chain(client, datasets):
-    """Create multiple datasets if they don't already exist.
-
-    Args:
-        client: BigQuery client instance
-        datasets (list): List of dataset references to create (can be dataset or project.dataset)
-
-    Returns:
-        None: Creates datasets if they don't exist
-    """
-    for dataset_ref in datasets:
-        qualified_dataset = get_dataset_id(client, dataset_ref)
-
-        if not check_dataset_existence(client, qualified_dataset):
-            create_dataset(client, qualified_dataset)
-
-
 def create_dataset_chain_views(client, datasets, tables_to_include=None):
     """Create views in each subsequent dataset that reference tables from the previous dataset.
 

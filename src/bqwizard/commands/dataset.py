@@ -4,7 +4,6 @@ from .utils.dataset_utils import (
     check_dataset_existence,
     create_view,
     create_dataset,
-    create_dataset_chain,
     create_dataset_chain_views,
     describe_dataset,
     get_dataset_id,
