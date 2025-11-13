@@ -55,8 +55,7 @@ def get_user_config_dir(cli="BQWIZARD") -> str:
         os.makedirs(config_dir, exist_ok=True)
         click.echo(f"Creating initial configuration file {config_file_dir}.")
         create_initial_config(config_file_dir)
-        click.echo("Creating initial configuration file {config_file_dir}.")
-        click.echo(f"Inital Config Created in {config_file_dir}")
+        click.echo(f"Initial Config Created in {config_file_dir}")
         return config_file_dir
 
 

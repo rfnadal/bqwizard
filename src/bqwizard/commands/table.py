@@ -3,8 +3,12 @@ from click import Context
 from tabulate import tabulate
 from .utils.table_utils import (
     write_to_csv,
-    create_view,
     get_table_id,
+)
+from .utils.dataset_utils import (
+    create_view,
+    check_dataset_existence,
+    create_dataset,
 )
 from google.api_core.exceptions import NotFound
 
@@ -247,14 +251,22 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
     source_table_id = get_table_id(project, source_table)
     target_table_id = get_table_id(project, target_table)
 
-    create_view(client, source_table_id, target_table_id, force)
+    # Parse target_table_id to extract dataset and table name
+    target_parts = target_table_id.split(".")
+    if len(target_parts) == 3:
+        target_project, target_dataset, target_table_name = target_parts
+        target_dataset_ref = f"{target_project}.{target_dataset}"
+    else:
+        raise click.BadParameter(f"Invalid target table format: {target_table_id}")
+
+    # Check if target dataset exists, create if force is True
+    if not check_dataset_existence(client, target_dataset_ref):
+        if force:
+            create_dataset(client, target_dataset_ref)
+        else:
+            click.echo("Target dataset does not exist. Either create it or use --force.")
+            return
+
+    create_view(client, source_table_id, target_dataset_ref, target_table_name)
 
 
-@table.command()
-@click.argument("view")
-@click.pass_context
-def genealogy(ctx: Context, view: str):
-    project = ctx.obj["PROJECT"]
-    client = ctx.obj["CLIENT"]
-    source_table_id = get_table_id(project, view)
-    click.echo(source_table_id)
