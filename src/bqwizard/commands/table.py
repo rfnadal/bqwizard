@@ -4,8 +4,12 @@ from tabulate import tabulate
 from .utils.table_utils import (
     write_to_csv,
     create_view,
-    get_table_id,
 )
+from .utils.reference_utils import (
+    get_table_id,
+    validate_table_id,
+)
+from .utils.chain_utils import ChainOperationTracker
 from google.api_core.exceptions import NotFound
 
 
@@ -32,6 +36,9 @@ def describe(ctx: Context, table: str):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
     table_ref = client.get_table(table_id)
     table_data = [
@@ -79,6 +86,9 @@ def delete(ctx: Context, table: str):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
     confirmation_1 = click.confirm(f"Would you like to delete table {table_id}?")
     confirmation_2 = click.confirm("Are you sure?")
@@ -102,6 +112,9 @@ def refresh_view(ctx: Context, table: str):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     view_id = get_table_id(project, table)
 
     try:
@@ -142,6 +155,9 @@ def head(ctx: Context, table: str, rows: int):
     """
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
 
     try:
@@ -208,6 +224,9 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
             option_name="filename",
             message="Please provide a filename that ends with .csv",
         )
+
+    # Validate the table reference before processing
+    validate_table_id(table, "short")
     table_id = get_table_id(project, table)
     sample_query = f"""
 
@@ -244,6 +263,9 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
 
+    # Validate both table references before processing
+    validate_table_id(source_table, "short")
+    validate_table_id(target_table, "short")
     source_table_id = get_table_id(project, source_table)
     target_table_id = get_table_id(project, target_table)
 
@@ -256,5 +278,151 @@ def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> N
 def genealogy(ctx: Context, view: str):
     project = ctx.obj["PROJECT"]
     client = ctx.obj["CLIENT"]
+
+    # Validate the table reference before processing
+    validate_table_id(view, "short")
     source_table_id = get_table_id(project, view)
     click.echo(source_table_id)
+
+
+@table.command()
+@click.argument("source_tables", nargs=-1, required=True)
+@click.argument("target_datasets", nargs=-1, required=True)
+@click.option(
+    "--dry-run",
+    help="Preview what will be created without actually creating anything.",
+    is_flag=True,
+)
+@click.option(
+    "--force",
+    help="Automatically create target datasets if they don't exist.",
+    is_flag=True,
+)
+@click.pass_context
+def chain(ctx: Context, source_tables: tuple, target_datasets: tuple, dry_run: bool, force: bool) -> None:
+    """Create views of specific tables across multiple datasets.
+
+    This command creates views of the specified source tables in each target dataset.
+    Unlike dataset chain which chains all tables from one dataset to the next,
+    this command creates the same tables (as views) across multiple target datasets.
+
+    Args:
+        source_tables: List of table references to chain (dataset.table or project.dataset.table)
+        target_datasets: List of target datasets where views will be created
+        dry_run: Preview what would be created without creating anything
+        force: Create target datasets if they don't exist
+
+    Examples:
+        # Create views of specific tables in multiple datasets
+        bqwizard table chain dataset1.table1 dataset1.table2 dataset2 dataset3
+
+        # With project qualification
+        bqwizard table chain project1.dataset1.table1 project2.dataset2 project3.dataset3
+    """
+    project = ctx.obj["PROJECT"]
+    client = ctx.obj["CLIENT"]
+
+    # Validation
+    if len(source_tables) == 0:
+        click.echo("Error: At least one source table is required.", err=True)
+        ctx.exit(1)
+
+    if len(target_datasets) == 0:
+        click.echo("Error: At least one target dataset is required.", err=True)
+        ctx.exit(1)
+
+    if dry_run:
+        click.echo("DRY RUN MODE - No changes will be made")
+        click.echo("=" * 50)
+
+    # Validate and qualify all source tables
+    qualified_source_tables = []
+    for table_ref in source_tables:
+        try:
+            validate_table_id(table_ref, "short")
+            qualified_table = get_table_id(project, table_ref)
+            qualified_source_tables.append(qualified_table)
+        except Exception as e:
+            click.echo(f"Invalid source table '{table_ref}': {e}", err=True)
+            ctx.exit(1)
+
+    # Validate and qualify all target datasets
+    qualified_target_datasets = []
+    for dataset_ref in target_datasets:
+        try:
+            from .utils.dataset_utils import get_dataset_id
+            qualified_dataset = get_dataset_id(client, dataset_ref)
+            qualified_target_datasets.append(qualified_dataset)
+        except Exception as e:
+            click.echo(f"Invalid target dataset '{dataset_ref}': {e}", err=True)
+            ctx.exit(1)
+
+    # Check target dataset existence
+    from .utils.dataset_utils import check_dataset_existence, create_dataset
+
+    datasets_to_create = []
+    for dataset_id in qualified_target_datasets:
+        if not check_dataset_existence(client, dataset_id):
+            if force:
+                datasets_to_create.append(dataset_id)
+                if dry_run:
+                    click.echo(f"Would create dataset: {dataset_id}")
+                else:
+                    try:
+                        create_dataset(client, dataset_id)
+                        click.echo(f"Created dataset: {dataset_id}")
+                    except Exception as e:
+                        click.echo(f"Failed to create dataset {dataset_id}: {e}", err=True)
+                        ctx.exit(1)
+            else:
+                if dry_run:
+                    click.echo(f"Target dataset {dataset_id} does not exist and would need --force to create.")
+                else:
+                    click.echo(f"Target dataset {dataset_id} does not exist. Use --force to create it.", err=True)
+                ctx.exit(1)
+
+    # Create table chain
+    tracker = ChainOperationTracker(client, dry_run)
+
+    if dry_run:
+        click.echo(f"\nCreating views for {len(qualified_source_tables)} tables in {len(qualified_target_datasets)} datasets:")
+        click.echo("-" * 60)
+
+    success = True
+    total_operations = len(qualified_source_tables) * len(qualified_target_datasets)
+    completed_operations = 0
+
+    try:
+        for source_table_id in qualified_source_tables:
+            # Extract table name from source
+            table_name = source_table_id.split(".")[-1]
+
+            for target_dataset_id in qualified_target_datasets:
+                if not tracker.create_view_with_tracking(
+                    source_table_id, target_dataset_id, table_name
+                ):
+                    success = False
+                    break
+                completed_operations += 1
+
+            if not success:
+                break
+
+    except Exception as e:
+        click.echo(f"Unexpected error during table chain creation: {e}", err=True)
+        success = False
+
+    # Print results
+    tracker.print_operation_summary()
+
+    if dry_run:
+        if success:
+            click.echo(f"\nDry run completed successfully. Would create {total_operations} views.")
+            click.echo("Use without --dry-run to execute.")
+        else:
+            click.echo(f"\nDry run found issues that would prevent execution.", err=True)
+    else:
+        if success:
+            click.echo(f"Table chain completed successfully. Created {completed_operations} views.")
+        else:
+            click.echo(f"Table chain operation failed after {completed_operations}/{total_operations} operations.", err=True)

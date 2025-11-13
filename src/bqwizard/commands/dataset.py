@@ -4,11 +4,13 @@ from .utils.dataset_utils import (
     check_dataset_existence,
     create_view,
     create_dataset,
-    create_dataset_chain,
     create_dataset_chain_views,
     describe_dataset,
     get_dataset_id,
 )
+from .utils.chain_utils import create_dataset_chain_with_tracking
+from .utils.layer_utils import resolve_layer_references, parse_layer_shorthand, format_layer_help, resolve_layer_reference
+from .utils.dataset_auth_utils import DatasetAuthorizationManager
 from tabulate import tabulate
 from google.api_core.exceptions import NotFound
 
@@ -264,17 +266,43 @@ def expose(
     help="Comma-separated list of table names to include in the chain (e.g., 'table1,table2,table3').",
     type=str,
 )
+@click.option(
+    "--dry-run",
+    help="Preview what will be created without actually creating anything.",
+    is_flag=True,
+)
+@click.option(
+    "--layers",
+    help="Comma-separated layer names to chain (requires --datasets). Example: raw,clean,analytics",
+    type=str,
+)
+@click.option(
+    "--dataset-names",
+    help="Comma-separated dataset names to use with --layers. Example: customer_data,user_data",
+    type=str,
+)
+@click.option(
+    "--remove-suffix",
+    help="Remove specified suffix from dataset names in target layers. Example: '_raw'",
+    type=str,
+)
+@click.option(
+    "--remove-prefix",
+    help="Remove specified prefix from dataset names in target layers. Example: 'raw_'",
+    type=str,
+)
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> None:
+def chain(ctx: Context, datasets: tuple, force: bool, tables: str, dry_run: bool, layers: str, dataset_names: str, remove_suffix: str, remove_prefix: str) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
         ctx: Click context object containing client information
-        datasets (tuple): Ordered sequence of dataset names to chain together. 
+        datasets (tuple): Ordered sequence of dataset names to chain together.
                            Each can be specified as 'dataset' or 'project.dataset'
         force (bool): If True, creates missing datasets automatically
         tables (str, optional): Comma-separated list of table names to include.
                                Tables not in this list will be ignored.
+        dry_run (bool): If True, shows what would be created without creating anything.
 
     Returns:
         None: Prints completion message when chain is created
@@ -285,44 +313,120 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> Non
         - Views in dataset3 pointing to dataset2's views
     """
     client = ctx.obj["CLIENT"]
-    
-    # Initialize tables_to_include as None
+
+    # Validate transformation options
+    if remove_suffix and remove_prefix:
+        click.echo("Error: Cannot use both --remove-suffix and --remove-prefix together", err=True)
+        ctx.exit(1)
+
+    if (remove_suffix or remove_prefix) and not (layers and dataset_names):
+        click.echo("Error: --remove-suffix and --remove-prefix can only be used with --layers and --dataset-names", err=True)
+        ctx.exit(1)
+
+    if layers and dataset_names:
+        try:
+            qualified_datasets = parse_layer_shorthand(layers, dataset_names, remove_suffix, remove_prefix)
+            if dry_run:
+                click.echo("Using layer shorthand mode:")
+                click.echo(f"Layers: {layers}")
+                click.echo(f"Dataset names: {dataset_names}")
+                if remove_suffix:
+                    click.echo(f"Remove suffix: '{remove_suffix}'")
+                if remove_prefix:
+                    click.echo(f"Remove prefix: '{remove_prefix}'")
+                click.echo(f"Resolved to: {' -> '.join(qualified_datasets)}")
+                click.echo("-" * 50)
+        except click.BadArgumentUsage as e:
+            click.echo(f"Layer shorthand error: {e}", err=True)
+            click.echo(f"\n{format_layer_help()}")
+            ctx.exit(1)
+    elif layers or dataset_names:
+        click.echo("Error: Both --layers and --dataset-names must be provided together", err=True)
+        ctx.exit(1)
+    else:
+        if len(datasets) < 2:
+            click.echo("Error: At least 2 datasets are required to create a chain.", err=True)
+            ctx.exit(1)
+
+        try:
+            dataset_list = list(datasets)
+            qualified_datasets = resolve_layer_references(dataset_list)
+
+            if dry_run and dataset_list != qualified_datasets:
+                click.echo("Resolved layer references:")
+                for original, resolved in zip(dataset_list, qualified_datasets):
+                    if original != resolved:
+                        click.echo(f"  {original} -> {resolved}")
+                click.echo("-" * 50)
+        except click.BadArgumentUsage as e:
+            click.echo(f"Layer resolution error: {e}", err=True)
+            click.echo(f"\n{format_layer_help()}")
+            ctx.exit(1)
+
+    if len(qualified_datasets) < 2:
+        click.echo("Error: At least 2 datasets are required to create a chain.", err=True)
+        ctx.exit(1)
+
+    if dry_run:
+        click.echo("DRY RUN MODE - No changes will be made")
+        click.echo("=" * 50)
+
     tables_to_include = None
-    
-    # Parse comma-separated list if provided
+
     if tables:
-        table_list = [t.strip() for t in tables.split(',') if t.strip()]
+        table_list = [t.strip() for t in tables.split(",") if t.strip()]
         tables_to_include = set(table_list)
-        click.echo(f"Loaded {len(tables_to_include)} tables from --tables option")
-   
-    qualified_datasets = []
-    for ds in datasets:
-        qualified_ds = get_dataset_id(client, ds)
-        qualified_datasets.append(qualified_ds)
-    
+        click.echo(f"Loaded {len(tables_to_include)} tables from --tables option: {', '.join(sorted(tables_to_include))}")
+
+
     datasets_exist = True
+    datasets_to_create = []
+
     for ds in qualified_datasets:
         if not check_dataset_existence(client, ds):
             datasets_exist = False
+            datasets_to_create.append(ds)
             if force:
-                try:
-                    create_dataset(client, ds)
-                    click.echo(f"Created dataset {ds}")
-                except Exception as e:
-                    click.echo(f"Failed to create dataset {ds}: {e}")
-                    return
+                if dry_run:
+                    click.echo(f"Would create dataset: {ds}")
+                else:
+                    try:
+                        create_dataset(client, ds)
+                        click.echo(f"Created dataset {ds}")
+                    except Exception as e:
+                        click.echo(f"Failed to create dataset {ds}: {e}", err=True)
+                        return
             else:
-                click.echo(f"Dataset {ds} does not exist. Use --force to create it.")
+                if dry_run:
+                    click.echo(f"Dataset {ds} does not exist and would need --force to create.")
+                else:
+                    click.echo(f"Dataset {ds} does not exist. Use --force to create it.", err=True)
                 return
-    
+
     if datasets_exist or force:
-        try:
-            create_dataset_chain_views(client, qualified_datasets, tables_to_include)
-            click.echo("Chain completed.")
-        except Exception as e:
-            click.echo(f"Error creating dataset chain: {e}")
+        if dry_run:
+            click.echo("\nPreview of chain operations:")
+            click.echo("-" * 40)
+
+        success = create_dataset_chain_with_tracking(
+            client, qualified_datasets, tables_to_include, dry_run
+        )
+
+        if dry_run:
+            if success:
+                click.echo("\nDry run completed successfully. Use without --dry-run to execute.")
+            else:
+                click.echo("\nDry run found issues that would prevent execution.", err=True)
+        else:
+            if success:
+                click.echo("Chain completed successfully.")
+            else:
+                click.echo("Chain operation failed.", err=True)
     else:
-        click.echo("Not all target datasets exist. Either create them or use --force.")
+        if dry_run:
+            click.echo("Not all target datasets exist. Would need --force to create them.")
+        else:
+            click.echo("Not all target datasets exist. Either create them or use --force.", err=True)
 
 
 @dataset.command()
@@ -346,3 +450,148 @@ def describe(ctx: Context, dataset: str) -> None:
     client = ctx.obj["CLIENT"]
     project = ctx.obj["PROJECT"]
     describe_dataset(client, dataset, project)
+
+
+@dataset.command("authorize-add")
+@click.argument("shared_dataset")
+@click.argument("authorized_dataset")
+@click.pass_context
+def authorize_add(ctx: Context, shared_dataset: str, authorized_dataset: str) -> None:
+    """Add dataset authorization for views to access shared dataset.
+
+    Args:
+        ctx: Click context object containing client information
+        shared_dataset: Dataset that contains the data to be shared
+        authorized_dataset: Dataset whose views will be authorized to access shared dataset
+
+    Examples:
+        bqwizard dataset authorize-add raw.customer_data analytics.customer_data
+        bqwizard dataset authorize-add project1.shared_data project2.view_data
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        # Resolve layer references if applicable
+        shared_id = resolve_layer_reference(shared_dataset)
+        auth_id = resolve_layer_reference(authorized_dataset)
+
+        result = auth_manager.add_authorized_dataset(shared_id, auth_id)
+        click.echo(result)
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@dataset.command("authorize-remove")
+@click.argument("shared_dataset")
+@click.argument("authorized_dataset")
+@click.pass_context
+def authorize_remove(ctx: Context, shared_dataset: str, authorized_dataset: str) -> None:
+    """Remove dataset authorization.
+
+    Args:
+        ctx: Click context object containing client information
+        shared_dataset: Dataset that contains the shared data
+        authorized_dataset: Dataset whose authorization should be removed
+
+    Examples:
+        bqwizard dataset authorize-remove raw.customer_data analytics.customer_data
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        shared_id = resolve_layer_reference(shared_dataset)
+        auth_id = resolve_layer_reference(authorized_dataset)
+
+        result = auth_manager.remove_authorized_dataset(shared_id, auth_id)
+        click.echo(result)
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@dataset.command("authorize-list")
+@click.argument("dataset")
+@click.pass_context
+def authorize_list(ctx: Context, dataset: str) -> None:
+    """List authorized datasets that can access the specified dataset.
+
+    Args:
+        ctx: Click context object containing client information
+        dataset: Dataset to check for authorizations
+
+    Examples:
+        bqwizard dataset authorize-list raw.customer_data
+        bqwizard dataset authorize-list my_shared_dataset
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        dataset_id = resolve_layer_reference(dataset)
+        authorized = auth_manager.list_authorized_datasets(dataset_id)
+
+        if not authorized:
+            click.echo(f"No authorized datasets found for {dataset_id}")
+        else:
+            click.echo(f"Authorized datasets for {dataset_id}:")
+            for auth in authorized:
+                target_types = ", ".join(auth['target_types'])
+                click.echo(f"  {auth['project_id']}.{auth['dataset_id']} (target_types: {target_types})")
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@dataset.command("authorize-show")
+@click.argument("dataset")
+@click.pass_context
+def authorize_show(ctx: Context, dataset: str) -> None:
+    """Show complete access policy for a dataset.
+
+    Args:
+        ctx: Click context object containing client information
+        dataset: Dataset to show access policy for
+
+    Examples:
+        bqwizard dataset authorize-show raw.customer_data
+    """
+    client = ctx.obj["CLIENT"]
+    auth_manager = DatasetAuthorizationManager(client)
+
+    try:
+        dataset_id = resolve_layer_reference(dataset)
+        access_entries = auth_manager.show_all_access_entries(dataset_id)
+
+        if not access_entries:
+            click.echo(f"No access entries found for {dataset_id}")
+        else:
+            click.echo(f"Access policy for {dataset_id}:")
+            click.echo("-" * 50)
+
+            for i, entry in enumerate(access_entries, 1):
+                click.echo(f"Entry {i}:")
+
+                # Handle different entry types
+                if 'role' in entry:
+                    click.echo(f"  Role: {entry['role']}")
+
+                if 'userByEmail' in entry:
+                    click.echo(f"  User: {entry['userByEmail']}")
+                elif 'groupByEmail' in entry:
+                    click.echo(f"  Group: {entry['groupByEmail']}")
+                elif 'domain' in entry:
+                    click.echo(f"  Domain: {entry['domain']}")
+                elif 'specialGroup' in entry:
+                    click.echo(f"  Special Group: {entry['specialGroup']}")
+                elif 'dataset' in entry:
+                    dataset_info = entry['dataset']['dataset']
+                    target_types = ", ".join(entry['dataset'].get('target_types', ['VIEWS']))
+                    click.echo(f"  Authorized Dataset: {dataset_info['project_id']}.{dataset_info['dataset_id']}")
+                    click.echo(f"  Target Types: {target_types}")
+                elif 'view' in entry:
+                    view_info = entry['view']
+                    click.echo(f"  Authorized View: {view_info['projectId']}.{view_info['datasetId']}.{view_info['tableId']}")
+
+                click.echo()  # Empty line between entries
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
