@@ -1,5 +1,4 @@
 import click
-from click import Context
 from .utils.dataset_utils import (
     check_dataset_existence,
     create_view,
@@ -9,12 +8,15 @@ from .utils.dataset_utils import (
     get_dataset_id,
 )
 from tabulate import tabulate
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import NotFound, GoogleAPIError
+
+# Constants
+DEFAULT_DATASET_TIMEOUT = 30
 
 
 @click.group()
 @click.pass_context
-def dataset(ctx: Context):
+def dataset(ctx: click.Context):
     """Manage BigQuery Datasets.
 
     Args:
@@ -26,7 +28,7 @@ def dataset(ctx: Context):
 @dataset.command()
 @click.argument("dataset_name")
 @click.pass_context
-def tables(ctx: Context, dataset_name: str) -> None:
+def tables(ctx: click.Context, dataset_name: str) -> None:
     """List all tables in a specified BigQuery dataset.
 
     Args:
@@ -56,13 +58,15 @@ def tables(ctx: Context, dataset_name: str) -> None:
                 table_data, headers=["Table ID", "Dataset", "Type"], tablefmt="grid"
             )
         )
-    except Exception as e:
-        click.echo(f"Error: {str(e)}")
+    except NotFound as e:
+        click.echo(f"Dataset not found: {str(e)}")
+    except GoogleAPIError as e:
+        click.echo(f"BigQuery API error: {str(e)}")
 
 
 @dataset.command()
 @click.pass_context
-def ls(ctx: Context) -> None:
+def ls(ctx: click.Context) -> None:
     """List all datasets in the current project.
 
     Args:
@@ -83,14 +87,14 @@ def ls(ctx: Context) -> None:
             dataset_data = [[d.dataset_id] for d in datasets]
             click.echo(tabulate(dataset_data, headers=["Dataset ID"], tablefmt="grid"))
         else:
-            print(f"{project} does not contain any datasets.")
+            click.echo(f"{project} does not contain any datasets.")
     except NotFound:
         click.echo(f"Project {project} not found.")
 
 
 @dataset.command()
 @click.pass_context
-def describe_all(ctx: Context) -> None:
+def describe_all(ctx: click.Context) -> None:
     """List detailed information about all datasets and their corresponding tables.
 
     Args:
@@ -111,7 +115,7 @@ def describe_all(ctx: Context) -> None:
 @click.pass_context
 @click.argument("dataset_name")
 @click.option("--location", default="US")
-def create(ctx: Context, dataset_name: str, location: str) -> None:
+def create(ctx: click.Context, dataset_name: str, location: str) -> None:
     """Create a new BigQuery dataset in the specified location.
 
     Args:
@@ -135,18 +139,18 @@ def create(ctx: Context, dataset_name: str, location: str) -> None:
         )
         if confirmation:
             click.echo(f"Creating dataset {dataset_ref} in location {location}")
-            dataset = client.create_dataset(dataset_ref, location=location, timeout=30)
+            dataset = client.create_dataset(dataset_ref, location=location, timeout=DEFAULT_DATASET_TIMEOUT)
             click.echo(
                 f"Successfully created dataset {dataset_ref} in location {location}"
             )
-    except Exception as e:
-        click.echo(f"Unknown Exception Occurred: {e}")
+    except GoogleAPIError as e:
+        click.echo(f"BigQuery API error: {e}")
 
 
 @dataset.command()
 @click.pass_context
 @click.argument("dataset_name")
-def delete(ctx: Context, dataset_name: str) -> None:
+def delete(ctx: click.Context, dataset_name: str) -> None:
     """Delete a BigQuery dataset and all its contents.
 
     Args:
@@ -174,8 +178,10 @@ def delete(ctx: Context, dataset_name: str) -> None:
             click.echo(f"Successfully deleted the {dataset_ref} dataset.")
         else:
             click.echo("Deletion aborted")
-    except Exception as e:
-        click.echo(f"Unknown error occurred: {e}")
+    except NotFound as e:
+        click.echo(f"Dataset not found: {e}")
+    except GoogleAPIError as e:
+        click.echo(f"BigQuery API error: {e}")
 
 
 @dataset.command()
@@ -190,7 +196,7 @@ def delete(ctx: Context, dataset_name: str) -> None:
 )
 @click.pass_context
 def expose(
-    ctx: Context,
+    ctx: click.Context,
     source_project: str,
     source_dataset: str,
     target_project: str,
@@ -247,8 +253,10 @@ def expose(
         else:
             click.echo("Error: Please make sure that source and target datasets exist.")
         click.echo("Done.")
-    except Exception as e:
-        click.echo(f"Unknown Exception Occurred: {e}")
+    except NotFound as e:
+        click.echo(f"Dataset or table not found: {e}")
+    except GoogleAPIError as e:
+        click.echo(f"BigQuery API error: {e}")
 
 
 @dataset.command()
@@ -264,7 +272,7 @@ def expose(
     type=str,
 )
 @click.pass_context
-def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> None:
+def chain(ctx: click.Context, datasets: tuple, force: bool, tables: str = None) -> None:
     """Create a chain of datasets with views referencing tables from the previous dataset.
 
     Args:
@@ -307,7 +315,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> Non
                 try:
                     create_dataset(client, ds)
                     click.echo(f"Created dataset {ds}")
-                except Exception as e:
+                except GoogleAPIError as e:
                     click.echo(f"Failed to create dataset {ds}: {e}")
                     return
             else:
@@ -318,7 +326,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> Non
         try:
             create_dataset_chain_views(client, qualified_datasets, tables_to_include)
             click.echo("Chain completed.")
-        except Exception as e:
+        except (NotFound, GoogleAPIError) as e:
             click.echo(f"Error creating dataset chain: {e}")
     else:
         click.echo("Not all target datasets exist. Either create them or use --force.")
@@ -327,7 +335,7 @@ def chain(ctx: Context, datasets: tuple, force: bool, tables: str = None) -> Non
 @dataset.command()
 @click.argument("dataset")
 @click.pass_context
-def describe(ctx: Context, dataset: str) -> None:
+def describe(ctx: click.Context, dataset: str) -> None:
     """Display detailed information about a specific dataset and its tables.
 
     Args:

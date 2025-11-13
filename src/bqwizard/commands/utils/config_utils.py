@@ -7,7 +7,7 @@ import os
 
 
 class Settings(BaseModel):
-    """Pydatinc Model that represents the user preference settings."""
+    """Pydantic Model that represents the user preference settings."""
 
     project: str = Field(
         ..., description="The project you want to use for the current session"

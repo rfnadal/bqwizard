@@ -1,10 +1,11 @@
 import click
+from typing import Optional, List
 from tabulate import tabulate
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import NotFound, GoogleAPIError
 from .table_utils import get_table_id
 
 
-def check_dataset_existence(client, dataset: str):
+def check_dataset_existence(client, dataset: str) -> bool:
     """Check if a BigQuery dataset exists.
 
     Args:
@@ -25,7 +26,7 @@ def check_dataset_existence(client, dataset: str):
             project_id = client.project
         dataset_ref = client.dataset(dataset_id, project=project_id)
         return client.get_dataset(dataset_ref, retry=None) is not None
-    except Exception:
+    except (NotFound, GoogleAPIError):
         return False
 
 
@@ -52,7 +53,7 @@ def get_dataset_id(client, dataset_ref: str) -> str:
 
 def create_view(
     client, source_table_ref: str, target_dataset_ref: str, target_table_name: str
-):
+) -> None:
     """Create a BigQuery view in the target dataset that references a source table.
 
     Args:
@@ -87,7 +88,7 @@ def create_view(
     click.echo(f"View: {fq_target_view_id} created successfully. \n")
 
 
-def create_dataset(client, target_dataset_ref):
+def create_dataset(client, target_dataset_ref: str) -> None:
     """Create a new BigQuery dataset.
 
     Args:
@@ -109,7 +110,7 @@ def create_dataset(client, target_dataset_ref):
     click.echo(f"Successfully created dataset: {target_dataset_ref}")
 
 
-def create_dataset_chain_views(client, datasets, tables_to_include=None):
+def create_dataset_chain_views(client, datasets: List[str], tables_to_include: Optional[set] = None) -> None:
     """Create views in each subsequent dataset that reference tables from the previous dataset.
 
     Args:
@@ -170,11 +171,11 @@ def create_dataset_chain_views(client, datasets, tables_to_include=None):
                     create_view(
                         client, source_table_ref_for_view, next_dataset_fq, table_name
                     )
-            except Exception as e:
+            except (NotFound, GoogleAPIError) as e:
                 click.echo(f"Error processing dataset {current_dataset_fq}: {e}")
 
 
-def describe_dataset(client, dataset, project):
+def describe_dataset(client, dataset, project: str) -> None:
     """Display detailed information about a BigQuery dataset and its tables.
 
     Args:
@@ -218,9 +219,14 @@ def describe_dataset(client, dataset, project):
     try:
         dataset_ref = client.dataset(dataset_id_to_fetch, project=project_id_to_use)
         dataset_obj = client.get_dataset(dataset_ref)
-    except Exception as e:
+    except NotFound as e:
         click.echo(
-            f"Could not fetch dataset {project_id_to_use}.{dataset_id_to_fetch}: {e}"
+            f"Dataset {project_id_to_use}.{dataset_id_to_fetch} not found: {e}"
+        )
+        return
+    except GoogleAPIError as e:
+        click.echo(
+            f"BigQuery API error fetching dataset {project_id_to_use}.{dataset_id_to_fetch}: {e}"
         )
         return
 
@@ -255,7 +261,7 @@ def describe_dataset(client, dataset, project):
                         table_ref.modified,
                     )
                 )
-            except Exception as e:
+            except (NotFound, GoogleAPIError) as e:
                 click.echo(f"Error getting details for table {t.table_id}: {e}")
                 table_data.append(
                     (
@@ -266,7 +272,7 @@ def describe_dataset(client, dataset, project):
                         "N/A",
                     )
                 )
-    except Exception as e:
+    except (NotFound, GoogleAPIError) as e:
         click.echo(f"Error listing tables: {e}")
 
     click.echo(

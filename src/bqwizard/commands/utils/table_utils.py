@@ -1,5 +1,6 @@
 import click
 import csv
+from typing import Any
 
 
 def get_table_id(project: str, table: str) -> str:
@@ -29,7 +30,7 @@ def get_table_id(project: str, table: str) -> str:
         )
 
 
-def write_to_csv(data, dest: str) -> None:
+def write_to_csv(data: Any, dest: str) -> None:
     """
     Write's the result of a BQ Query to a csv
 

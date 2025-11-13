@@ -1,5 +1,4 @@
 import click
-from click import Context
 from tabulate import tabulate
 from .utils.table_utils import (
     write_to_csv,
@@ -10,12 +9,17 @@ from .utils.dataset_utils import (
     check_dataset_existence,
     create_dataset,
 )
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import NotFound, GoogleAPIError
+
+# Constants
+DEFAULT_HEAD_ROWS = 5
+DEFAULT_SAMPLE_PERCENT = 5
+DEFAULT_SAMPLE_LIMIT = 100
 
 
 @click.group()
 @click.pass_context
-def table(ctx: Context):
+def table(ctx: click.Context):
     """
     A group of commands for managing tables.
     """
@@ -25,7 +29,7 @@ def table(ctx: Context):
 @table.command()
 @click.argument("table")
 @click.pass_context
-def describe(ctx: Context, table: str):
+def describe(ctx: click.Context, table: str):
     """
     Describes a table and its metadata.
 
@@ -74,7 +78,7 @@ def describe(ctx: Context, table: str):
 @table.command()
 @click.argument("table")
 @click.pass_context
-def delete(ctx: Context, table: str):
+def delete(ctx: click.Context, table: str):
     """
     Delete a specific table
 
@@ -96,7 +100,7 @@ def delete(ctx: Context, table: str):
 @table.command()
 @click.argument("table")
 @click.pass_context
-def refresh_view(ctx: Context, table: str):
+def refresh_view(ctx: click.Context, table: str):
     """
     Recreates a view to refresh any columns that might have changed.
 
@@ -131,12 +135,12 @@ def refresh_view(ctx: Context, table: str):
 @click.option(
     "--rows",
     "-r",
-    default=5,
-    help="Number of rows to display (default: 5)",
+    default=DEFAULT_HEAD_ROWS,
+    help=f"Number of rows to display (default: {DEFAULT_HEAD_ROWS})",
     type=int,
 )
 @click.pass_context
-def head(ctx: Context, table: str, rows: int):
+def head(ctx: click.Context, table: str, rows: int):
     """
     Display the first few rows of a table.
 
@@ -180,8 +184,8 @@ def head(ctx: Context, table: str, rows: int):
         click.echo("\n")
     except NotFound:
         click.echo(f"Table {table_id} not found.")
-    except Exception as e:
-        click.echo(f"Error displaying table rows: {str(e)}")
+    except GoogleAPIError as e:
+        click.echo(f"BigQuery API error: {str(e)}")
 
 
 @table.command()
@@ -189,13 +193,13 @@ def head(ctx: Context, table: str, rows: int):
 @click.option(
     "--percent",
     "-p",
-    default=5,
-    help="Percent of table used for sampling (default: 100)",
+    default=DEFAULT_SAMPLE_PERCENT,
+    help=f"Percent of table used for sampling (default: {DEFAULT_SAMPLE_PERCENT})",
     type=int,
 )
 @click.option("-f", "--filename", "dest", default="sample.csv")
 @click.pass_context
-def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
+def sample(ctx: click.Context, table: str, percent: int, dest: str) -> None:
     """
     Export sample rows from a table.
 
@@ -215,8 +219,8 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
     table_id = get_table_id(project, table)
     sample_query = f"""
 
-    SELECT * FROM `{table_id}` TABLESAMPLE SYSTEM ({percent} PERCENT) LIMIT 100
-    
+    SELECT * FROM `{table_id}` TABLESAMPLE SYSTEM ({percent} PERCENT) LIMIT {DEFAULT_SAMPLE_LIMIT}
+
     """
     sample_query_job = client.query(sample_query)
     sample_query_results = sample_query_job.result()
@@ -233,7 +237,7 @@ def sample(ctx: Context, table: str, percent: int, dest: str) -> None:
     help="Automatically create target dataset if it does not exist.",
 )
 @click.pass_context
-def expose(ctx: Context, source_table: str, target_table: str, force: bool) -> None:
+def expose(ctx: click.Context, source_table: str, target_table: str, force: bool) -> None:
     """
     Creates a view of a table
 

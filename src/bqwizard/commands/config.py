@@ -1,11 +1,12 @@
 import click
-from click import Context
+import json
+from pathlib import Path
 from .utils.config_utils import get_user_config_dir, load_config, update_config
 
 
 @click.group()
 @click.pass_context
-def config(ctx: Context) -> None:
+def config(ctx: click.Context) -> None:
     """Manage BQWIZARD configuration settings.
 
     Args:
@@ -35,8 +36,10 @@ def set_project(project: str) -> None:
         updated_settings = settings.model_copy(update={"project": f"{project}"})
         update_config(config_file_dir, updated_settings)
         click.echo("Done.")
-    except Exception as e:
-        click.echo(f"Error updating project configuration: {str(e)}")
+    except (FileNotFoundError, IOError) as e:
+        click.echo(f"Error accessing configuration file: {str(e)}")
+    except (json.JSONDecodeError, ValueError) as e:
+        click.echo(f"Error parsing configuration: {str(e)}")
 
 
 @config.command()
@@ -57,5 +60,7 @@ def show() -> None:
         for key, value in settings.model_dump().items():
             click.echo(f"{key}: {value}")
         click.echo("-" * 30)
-    except Exception as e:
-        click.echo(f"Error displaying configuration: {str(e)}")
+    except (FileNotFoundError, IOError) as e:
+        click.echo(f"Error accessing configuration file: {str(e)}")
+    except (json.JSONDecodeError, ValueError) as e:
+        click.echo(f"Error parsing configuration: {str(e)}")

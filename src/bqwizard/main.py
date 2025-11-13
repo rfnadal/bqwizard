@@ -3,6 +3,7 @@ from .commands import dataset
 from .commands import config
 from .commands import table
 from google.cloud import bigquery
+from google.api_core.exceptions import GoogleAPIError
 from .commands.utils import get_project_from_config
 
 
@@ -22,7 +23,7 @@ def cli(ctx, project):
         client = bigquery.Client(project=project)
         ctx.obj["PROJECT"] = project
         ctx.obj["CLIENT"] = client
-    except Exception as e:
+    except (ValueError, GoogleAPIError) as e:
         click.echo(f"Error initializing BigQuery client: {str(e)}")
         click.echo(
             "Please ensure you have valid Google Cloud credentials and a valid project ID."
